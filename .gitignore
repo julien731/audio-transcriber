@@ -1,0 +1,36 @@
+# Python virtual environment
+bin/
+include/
+lib/
+share/
+pyvenv.cfg
+
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+
+# macOS
+.DS_Store
+
+# Audio source files (large)
+*.m4a
+*.mp3
+*.wav
+*.flac
+*.ogg
+*.aac
+
+# Transcription cache/output
+*.transcription_cache.json
+sources/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Environment variables
+.env
+.env.local

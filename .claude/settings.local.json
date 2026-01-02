@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(brew list:*)",
+      "Bash(pyenv versions:*)",
+      "Bash(python meeting_transcriber.py:*)"
+    ]
+  }
+}
