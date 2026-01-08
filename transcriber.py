@@ -3,12 +3,14 @@ import warnings
 import logging
 import os
 import sys
+from dotenv import load_dotenv
 
 # Suppress noisy warnings from dependencies (must be done before imports)
 warnings.filterwarnings("ignore", message="Model was trained with")
 warnings.filterwarnings("ignore", message="torchaudio._backend.list_audio_backends")
 warnings.filterwarnings("ignore", message="resource_tracker:")
 os.environ["PYTHONWARNINGS"] = "ignore"
+load_dotenv()
 
 # Filter out noisy messages from stdout/stderr
 _SUPPRESSED_MESSAGES = [
