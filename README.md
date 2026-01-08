@@ -22,10 +22,25 @@ Local audio/video transcription with speaker diarization using WhisperX.
      - https://huggingface.co/pyannote/speaker-diarization-3.1
      - https://huggingface.co/pyannote/segmentation-3.0
 
-4. **Set token:**
+4. **Set token** (choose one method):
+
+   **Option A: Using a `.env` file (recommended)**
+
+   Copy the example file and add your token:
+   ```bash
+   cp .env.example .env
+   ```
+   Then edit `.env` and replace `your_huggingface_token_here` with your actual token:
+   ```
+   HF_TOKEN=hf_your_actual_token
+   ```
+   The `.env` file is gitignored, so your token stays private.
+
+   **Option B: Using an environment variable**
    ```bash
    export HF_TOKEN="hf_your_token_here"
    ```
+   Note: This only persists for the current terminal session.
 
 ## Usage
 
