@@ -83,6 +83,14 @@ from whisperx.diarize import DiarizationPipeline, assign_word_speakers
 
 CACHE_VERSION = 1
 
+# Languages supported by WhisperX alignment (wav2vec2 models)
+# Thai and other languages not in this list will skip alignment
+ALIGNMENT_LANGUAGES = {
+    "en", "fr", "de", "es", "it", "ja", "zh", "nl", "uk", "pt",
+    "ar", "cs", "ru", "pl", "hu", "fi", "fa", "el", "tr", "da",
+    "he", "vi", "ko", "ur", "te", "hi", "ta", "id", "ms"
+}
+
 
 def get_cache_path(audio_path: str) -> Path:
     """Get the cache file path for an audio file."""
@@ -252,33 +260,37 @@ def transcribe_meeting(
     if device == "cuda":
         torch.cuda.empty_cache()
 
-    # Align for word-level timestamps
-    log("Aligning timestamps...", quiet)
-    try:
-        model_a, metadata = whisperx.load_align_model(
-            language_code=detected_language,
-            device=device
-        )
-        result = whisperx.align(
-            result["segments"],
-            model_a,
-            metadata,
-            audio,
-            device,
-            return_char_alignments=False,
-            print_progress=not quiet,
-        )
-    except Exception as e:
-        raise TranscriptionError(f"Timestamp alignment failed: {e}")
+    # Align for word-level timestamps (only for supported languages)
+    if detected_language in ALIGNMENT_LANGUAGES:
+        log("Aligning timestamps...", quiet)
+        try:
+            model_a, metadata = whisperx.load_align_model(
+                language_code=detected_language,
+                device=device
+            )
+            result = whisperx.align(
+                result["segments"],
+                model_a,
+                metadata,
+                audio,
+                device,
+                return_char_alignments=False,
+                print_progress=not quiet,
+            )
+        except Exception as e:
+            raise TranscriptionError(f"Timestamp alignment failed: {e}")
 
-    # Validate alignment result
-    if not result or "segments" not in result:
-        raise TranscriptionError("Alignment returned no results")
+        # Validate alignment result
+        if not result or "segments" not in result:
+            raise TranscriptionError("Alignment returned no results")
 
-    # Free up GPU memory
-    del model_a
-    if device == "cuda":
-        torch.cuda.empty_cache()
+        # Free up GPU memory
+        del model_a
+        if device == "cuda":
+            torch.cuda.empty_cache()
+    else:
+        log(f"Skipping word-level alignment (not supported for '{detected_language}')", quiet)
+        log("Using segment-level timestamps instead", quiet)
 
     # Speaker diarization
     if hf_token:
