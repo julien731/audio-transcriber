@@ -10,19 +10,25 @@ Local audio/video transcription with speaker diarization using WhisperX.
    # apt install ffmpeg       # Ubuntu/Debian
    ```
 
-2. **Install Python dependencies:**
+2. **Create and activate a virtual environment** (requires Python 3.9-3.13):
+   ```bash
+   python3 -m venv .
+   source bin/activate  # On Windows: Scripts\activate
+   ```
+
+3. **Install Python dependencies:**
    ```bash
    pip install whisperx torch torchaudio
    ```
 
-3. **Get HuggingFace token** (required for speaker diarization):
+4. **Get HuggingFace token** (required for speaker diarization):
    - Create account at https://huggingface.co
    - Get token from https://huggingface.co/settings/tokens
    - Accept terms for these models:
      - https://huggingface.co/pyannote/speaker-diarization-3.1
      - https://huggingface.co/pyannote/segmentation-3.0
 
-4. **Set token** (choose one method):
+5. **Set token** (choose one method):
 
    **Option A: Using a `.env` file (recommended)**
 
@@ -43,6 +49,11 @@ Local audio/video transcription with speaker diarization using WhisperX.
    Note: This only persists for the current terminal session.
 
 ## Usage
+
+Make sure the virtual environment is activated before running:
+```bash
+source bin/activate  # On Windows: Scripts\activate
+```
 
 **Basic transcription:**
 ```bash
