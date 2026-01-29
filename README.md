@@ -12,8 +12,8 @@ Local audio/video transcription with speaker diarization using WhisperX.
 
 2. **Create and activate a virtual environment** (requires Python 3.9-3.13):
    ```bash
-   python3 -m venv venv
-   source venv/bin/activate  # On Windows: venv\Scripts\activate
+   python3 -m venv .
+   source bin/activate  # On Windows: Scripts\activate
    ```
 
 3. **Install Python dependencies:**
@@ -52,7 +52,7 @@ Local audio/video transcription with speaker diarization using WhisperX.
 
 Make sure the virtual environment is activated before running:
 ```bash
-source venv/bin/activate  # On Windows: venv\Scripts\activate
+source bin/activate  # On Windows: Scripts\activate
 ```
 
 **Basic transcription:**
