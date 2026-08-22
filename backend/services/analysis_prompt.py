@@ -33,7 +33,8 @@ def build_transcript_text(transcript: Transcript, speakers: dict[str, str]) -> s
     """
     lines = []
     for segment in transcript.segments:
-        name = speakers.get(segment.speaker, segment.speaker)
+        # Match the client's `speakers[id] || id`: an empty name falls back to id.
+        name = speakers.get(segment.speaker) or segment.speaker
         lines.append(f"[{format_timestamp(segment.start)}] {name}: {segment.text}")
     return "\n".join(lines)
 
