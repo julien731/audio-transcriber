@@ -78,6 +78,9 @@ final class AppState: ObservableObject {
     /// if it still identifies our child (finding #5).
     func shutdown() {
         let pid = supervisor.processIdentifier
+        // Deliberate shutdown: silence the crash handler so it can't flip the
+        // phase to .serviceFailed for an intentional termination.
+        supervisor.onUnexpectedTermination = nil
         supervisor.terminate()
         ServiceDiscovery.removeIfOwned(
             at: ServiceDiscovery.serviceFileURL(),
