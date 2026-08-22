@@ -95,4 +95,10 @@ Modify:
 - BR-1/2/3: build tooling scaffolded, artifact produced by maintainer on Apple Silicon (not in this PR's CI).
 
 ## Deviations from plan
-_Populated after implementation._
+
+- Runtime-invalid-token degradation (BR-10/EC-3) landed in commit 2 (with the token accessor) rather than commit 5, since it edits the same `_diarize_and_assign` site.
+- Added an autouse `_isolate_app_support` fixture in `tests/conftest.py` so no test reads/writes the real Application Support dir (not anticipated in the plan; required for safe isolation).
+- `service_main.main()` hands a pre-bound socket to `uvicorn` (implements TD-7's "port 0, read back" without any probe/rebind gap).
+- Added `MODELS_DIR` to `config.py` in both modes (dev default `<data>/models`).
+- Added explicit `huggingface_hub>=0.24.0` to `requirements.txt` (lazy-imported by provisioning; mocked in CI tests).
+- Coverage: 93.4% overall; `provisioning._snapshot_downloader` (real huggingface_hub path) is intentionally uncovered — CI has no ML/hub deps.
