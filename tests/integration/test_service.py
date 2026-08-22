@@ -37,7 +37,7 @@ class TestProvisioningEndpoints:
         assert res.json()["diarization_available"] is False
 
     async def test_post_models_starts_download(self, client, monkeypatch):
-        monkeypatch.setattr(provisioning, "_snapshot_downloader", lambda: (lambda repo: None))
+        monkeypatch.setattr(provisioning, "_snapshot_downloader", lambda: lambda repo: None)
 
         res = await client.post("/api/provisioning/models")
         assert res.status_code == 200

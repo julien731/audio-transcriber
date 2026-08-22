@@ -26,9 +26,7 @@ class TestBuildTranscriptText:
         )
 
     def test_uses_speaker_display_names(self):
-        text = analysis_prompt.build_transcript_text(
-            self._transcript(), {"SPEAKER_00": "Alice", "SPEAKER_01": "Bob"}
-        )
+        text = analysis_prompt.build_transcript_text(self._transcript(), {"SPEAKER_00": "Alice", "SPEAKER_01": "Bob"})
         assert text == "[00:00:00] Alice:  Hello there.\n[00:00:01] Bob:  How are you?"
 
     def test_falls_back_to_raw_speaker_id(self):

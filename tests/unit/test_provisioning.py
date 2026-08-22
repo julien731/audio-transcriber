@@ -74,7 +74,7 @@ class TestDownload:
 
     def test_start_download_runs_in_background(self, monkeypatch):
         provisioning.set_token("")
-        monkeypatch.setattr(provisioning, "_snapshot_downloader", lambda: (lambda repo: None))
+        monkeypatch.setattr(provisioning, "_snapshot_downloader", lambda: lambda repo: None)
 
         provisioning.start_download()
         thread = provisioning._thread
