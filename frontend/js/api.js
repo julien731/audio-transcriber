@@ -77,6 +77,21 @@ const API = {
         return res.json();
     },
 
+    async getAnalysisPrompt(meetingId, templateType, meetingContext) {
+        const params = new URLSearchParams({ template_type: templateType });
+        if (meetingContext != null) params.set('meeting_context', meetingContext);
+        const res = await fetch(`/api/meetings/${meetingId}/analysis-prompt?${params.toString()}`);
+        if (!res.ok) {
+            let detail = 'Failed to generate prompt';
+            try {
+                const body = await res.json();
+                if (body.detail) detail = body.detail;
+            } catch (e) { /* keep default */ }
+            throw new Error(detail);
+        }
+        return res.json();
+    },
+
     async updateSegmentSpeaker(meetingId, segmentId, speakerName) {
         const res = await fetch(`/api/meetings/${meetingId}/segments/speaker`, {
             method: 'PATCH',
