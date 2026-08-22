@@ -8,6 +8,7 @@ from pathlib import Path
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse
 
+import config
 from backend.schemas import (
     AudioAnalysis,
     JobStatus,
@@ -20,6 +21,7 @@ from backend.schemas import (
     SegmentSpeakerUpdate,
     Transcript,
 )
+from backend.services import provisioning
 from backend.services.job_queue import job_queue
 from backend.services.transcriber import start_transcription
 from config import MAX_UPLOAD_SIZE, MEETINGS_DIR
@@ -27,6 +29,25 @@ from config import MAX_UPLOAD_SIZE, MEETINGS_DIR
 router = APIRouter()
 
 ALLOWED_EXTENSIONS = {".mp3", ".mp4", ".m4a", ".wav", ".webm"}
+
+MODELS_MISSING_DETAIL = (
+    "Transcription models are not installed yet. First-time model download "
+    "requires an internet connection — complete setup, then try again."
+)
+
+
+def _require_models_present() -> None:
+    """Reject new transcriptions when required models are absent (BR-24, BR-25).
+
+    Bundled-only: a dev checkout resolves its models lazily via WhisperX as
+    before, so existing behavior and tests are unaffected (BR-18). Browsing and
+    reading existing meetings is never gated (BR-23).
+    """
+    if not config.is_bundled():
+        return
+    if not provisioning.models_ready():
+        raise HTTPException(status_code=503, detail=MODELS_MISSING_DETAIL)
+
 
 # Language codes the uploader can select. Used to reject unknown/garbage codes
 # from the multi-select before they reach the transcription pipeline.
@@ -132,6 +153,9 @@ async def create_meeting(
     if len(content) > MAX_UPLOAD_SIZE:
         raise HTTPException(status_code=400, detail="File too large (max 500MB)")
 
+    # Gate before writing anything so a rejected upload leaves no partial meeting.
+    _require_models_present()
+
     meeting_id = str(uuid.uuid4())
     meeting_dir = MEETINGS_DIR / meeting_id
     meeting_dir.mkdir(parents=True)
@@ -210,6 +234,8 @@ async def cancel_transcription(meeting_id: str):
 @router.post("/meetings/{meeting_id}/retry")
 async def retry_transcription(meeting_id: str):
     metadata = _load_metadata(meeting_id)
+
+    _require_models_present()
 
     job = job_queue.create_job(meeting_id)
     metadata.status = MeetingStatus.PROCESSING
