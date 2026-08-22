@@ -151,4 +151,10 @@ Resolves OQ-1 (macOS 13), OQ-2 (handshake+nonce, `service.json` fallback), OQ-3 
 
 ## Deviations from plan
 
-_Populated after implementation._
+- **Milestones D1 and slices 1–11 implemented in this env; D0 is documented but not executed here** (needs the maintainer's arm64 + full-Xcode machine for the multi-GB service build). D0's checklist lives in `docs/macos-app.md`.
+- **Tests run as executables** (`swift run …Tests`), not `swift test` — the CLT-only toolchain has no XCTest/`Testing` module (TD-2). 200 unit + 14 integration + 10 backend, all green and deterministic.
+- **Overview aggregation ordering hardened for determinism**: the JS relies on V8 stable sort + insertion order; the Swift port preserves first-appearance order and uses an explicit `stableSorted` (a fidelity fix beyond the plan, found via a flaky tie in tests).
+- **`build_app.sh` order**: assembles `.app`, embeds Sparkle.framework (`cp -RP`), signs inner→outer, ad-hoc signs the app — matches the plan; verified to assemble here (arm64, adhoc).
+- **CI helper scripts** `fetch_service.sh` / `verify_update.sh` are documented entrypoints whose service-embed + v1→v2 install are finalized at D0 (they fail loudly if run before D0 rather than shipping unverified artifacts).
+- **`SUPublicEDKey`** ships as a placeholder in Info.plist; the real key is injected by `release-macos.yml` from a CI secret (keys generated at D0).
+- Push note: the SSH agent dropped its key mid-session; commits were pushed via the `gh` token over HTTPS.
