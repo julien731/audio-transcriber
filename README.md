@@ -127,6 +127,14 @@ When uploading, you can optionally specify:
 | Language | Auto-detect | Set explicitly for faster transcription |
 | Number of speakers | Auto-detect | Set explicitly for better speaker identification |
 
+## Bundled Local Service
+
+The backend can be packaged as a self-contained, Apple-Silicon service that runs
+with no pre-installed Python, Homebrew, ffmpeg, or environment variables. It
+provisions its models on first run, stores data under Application Support, and
+exposes the full HTTP API for a thin native client to drive. See
+[docs/packaging.md](docs/packaging.md) for how to build and run it.
+
 ## CLI
 
 The CLI is useful for batch processing or scripting.

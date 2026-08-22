@@ -3,6 +3,9 @@ uvicorn[standard]>=0.34.0
 python-multipart>=0.0.20
 python-dotenv>=1.0.0
 whisperx @ git+https://github.com/m-bain/whisperX.git
+# Explicit (also a whisperx transitive dep): first-run provisioning downloads
+# the transcription/diarization models via huggingface_hub.snapshot_download.
+huggingface_hub>=0.24.0
 torch
 torchaudio
 # Pinned to match torch 2.8 ABI. Newer torchcodec releases (0.10+) target

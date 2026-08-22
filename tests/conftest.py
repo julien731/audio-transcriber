@@ -30,6 +30,16 @@ def _clean_job_queue():
     job_queue.clear()
 
 
+@pytest.fixture(autouse=True)
+def _isolate_app_support(tmp_path_factory, monkeypatch):
+    """Redirect the Application Support location to a tmp dir for every test, so
+    service config / provisioning never read or write the real home directory."""
+    from backend.services import app_paths
+
+    base = tmp_path_factory.mktemp("app_support")
+    monkeypatch.setattr(app_paths, "_APP_SUPPORT_OVERRIDE", base)
+
+
 @pytest.fixture
 def data_dir(tmp_path: Path) -> Path:
     """Isolated data directory for a single test."""

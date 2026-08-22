@@ -30,28 +30,10 @@ async function handleGeneratePrompt() {
     btn.textContent = 'Generating...';
 
     try {
-        const [templateResult, audioContextResult] = await Promise.all([
-            API.getTemplate(type),
-            meetingId ? API.getAnalysisContext(meetingId) : Promise.resolve({ context: '' }),
-        ]);
-        const transcript = buildPlainTextTranscript();
-        const context = getMeetingContext();
-        const audioContext = audioContextResult.context || '';
-        let prompt = templateResult.template;
-        if (audioContext) {
-            prompt = prompt.replace('[AUDIO ANALYSIS CONTEXT]', audioContext);
-        } else {
-            // Strip the placeholder line entirely so the prompt remains
-            // byte-identical to the pre-feature output (BR-4.4).
-            prompt = prompt.replace('[AUDIO ANALYSIS CONTEXT]\n', '');
-        }
-        if (context) {
-            prompt = prompt.replace('[MEETING CONTEXT]', '## Meeting Context\n\n' + context);
-        } else {
-            prompt = prompt.replace('[MEETING CONTEXT]\n\n', '');
-        }
-        prompt = prompt.replace('[PASTE TRANSCRIPT HERE]', transcript);
-
+        // Prompt assembly (template selection, audio/meeting context and
+        // transcript substitution) lives server-side so any client stays thin
+        // (BR-16, BR-17). We only pass the live meeting-context textarea value.
+        const { prompt } = await API.getAnalysisPrompt(meetingId, type, getMeetingContext());
         renderPromptContent(tabContainer, prompt);
     } catch (err) {
         showToast(err.message, 'error');
@@ -63,24 +45,6 @@ async function handleGeneratePrompt() {
 function getMeetingContext() {
     const textarea = document.getElementById('meeting-context');
     return textarea ? textarea.value.trim() : '';
-}
-
-function buildPlainTextTranscript() {
-    const state = window._speakerEditorState;
-    if (!state) return '';
-
-    const segments = document.querySelectorAll('#segments-container .segment');
-    const lines = [];
-
-    segments.forEach(seg => {
-        const speakerId = seg.querySelector('.speaker-label').dataset.speaker;
-        const speakerName = state.speakers[speakerId] || speakerId;
-        const time = seg.querySelector('.segment-time').textContent;
-        const text = seg.querySelector('.segment-text').textContent;
-        lines.push(`[${time}] ${speakerName}: ${text}`);
-    });
-
-    return lines.join('\n');
 }
 
 function renderPromptContent(container, prompt) {
