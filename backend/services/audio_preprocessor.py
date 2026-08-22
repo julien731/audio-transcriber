@@ -4,6 +4,8 @@ import logging
 import subprocess
 from pathlib import Path
 
+from backend.services import app_paths
+
 logger = logging.getLogger(__name__)
 
 HIGHPASS_CUTOFF_HZ = 80
@@ -16,8 +18,12 @@ SOUNDFILE_FORMATS = {".wav", ".flac", ".ogg", ".aiff", ".aif"}
 def _convert_to_wav(audio_path: Path) -> Path:
     """Convert non-WAV audio to WAV using ffmpeg. Returns path to the converted file."""
     wav_path = audio_path.parent / "audio_converted.wav"
+    # Prefer the bundled, arm64-native ffmpeg over any system/Homebrew binary
+    # (BR-3, BR-20, EC-10). Falls back to the literal "ffmpeg" only in a dev
+    # checkout with nothing on PATH, preserving the previous behavior.
+    ffmpeg = app_paths.ffmpeg_path() or "ffmpeg"
     subprocess.run(
-        ["ffmpeg", "-y", "-i", str(audio_path), "-ar", "16000", "-ac", "1", str(wav_path)],
+        [ffmpeg, "-y", "-i", str(audio_path), "-ar", "16000", "-ac", "1", str(wav_path)],
         check=True,
         capture_output=True,
     )
