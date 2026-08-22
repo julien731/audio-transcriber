@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleName</key>
+	<string>Meeting Transcriber</string>
+	<key>CFBundleDisplayName</key>
+	<string>Meeting Transcriber</string>
+	<key>CFBundleIdentifier</key>
+	<string>co.nimblehq.MeetingTranscriber</string>
+	<key>CFBundleExecutable</key>
+	<string>MeetingTranscriber</string>
+	<key>CFBundlePackageType</key>
+	<string>APPL</string>
+	<!-- Overwritten from the release tag by release-macos.yml (plan TD-5). -->
+	<key>CFBundleShortVersionString</key>
+	<string>0.0.0</string>
+	<key>CFBundleVersion</key>
+	<string>0</string>
+	<key>LSMinimumSystemVersion</key>
+	<string>13.0</string>
+	<!-- Focus the existing instance instead of starting a second embedded
+	     service against the same data (EC-9). -->
+	<key>LSMultipleInstancesProhibited</key>
+	<true/>
+	<key>NSHighResolutionCapable</key>
+	<true/>
+	<key>LSApplicationCategoryType</key>
+	<string>public.app-category.productivity</string>
+</dict>
+</plist>

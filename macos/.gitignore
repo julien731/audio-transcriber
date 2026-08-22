@@ -1,0 +1,9 @@
+.build/
+build/
+*.xcodeproj
+.DS_Store
+.impeccable/
+
+# Repo-root .gitignore has `sources/`, which matches this Swift `Sources/` dir
+# case-insensitively on macOS. Re-include it (the app's source lives here).
+!Sources/
