@@ -47,6 +47,11 @@ node_modules/
 .env
 .env.local
 
+# PyInstaller bundle build (see docs/packaging.md)
+build/
+dist/
+vendor/
+
 # Argus
 .argus/debug/
 .argus/continue-here.md
