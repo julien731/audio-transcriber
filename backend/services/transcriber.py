@@ -8,6 +8,7 @@ import time
 from collections import defaultdict
 from pathlib import Path
 
+import config
 from backend.schemas import (
     AudioAnalysis,
     AudioAnalysisStatus,
@@ -19,7 +20,7 @@ from backend.schemas import (
 )
 from backend.services.job_queue import job_queue
 from backend.services.multilingual_transcriber import transcribe_multilingual
-from config import HF_TOKEN, MEETINGS_DIR, WHISPER_BATCH_SIZE, WHISPER_DEVICE, WHISPER_MODEL
+from config import MEETINGS_DIR, WHISPER_BATCH_SIZE, WHISPER_DEVICE, WHISPER_MODEL
 
 logger = logging.getLogger(__name__)
 
@@ -78,22 +79,31 @@ def _diarize_and_assign(
     ``(result_with_speakers, diarize_turns)`` where ``diarize_turns`` are the raw
     PyAnnote turns (with overlaps) required by interaction analysis (BR-3.1).
     """
-    if not HF_TOKEN:
+    hf_token = config.current_hf_token()
+    if not hf_token:
         return result, None
 
     import torch
     from whisperx.diarize import DiarizationPipeline, assign_word_speakers
 
     job_queue.update_job(job_id, stage="diarizing", progress=progress)
-    diarize_model = DiarizationPipeline(
-        model_name="pyannote/speaker-diarization-3.1",
-        token=HF_TOKEN,
-        device=device,
-    )
-    diarize_kwargs = {}
-    if num_speakers:
-        diarize_kwargs["num_speakers"] = num_speakers
-    diarize_segments = diarize_model(audio, **diarize_kwargs)
+    try:
+        diarize_model = DiarizationPipeline(
+            model_name="pyannote/speaker-diarization-3.1",
+            token=hf_token,
+            device=device,
+        )
+        diarize_kwargs = {}
+        if num_speakers:
+            diarize_kwargs["num_speakers"] = num_speakers
+        diarize_segments = diarize_model(audio, **diarize_kwargs)
+    except Exception:
+        # A token accepted at provisioning time may later be revoked or be
+        # unverifiable (e.g. offline). Degrade to no-diarization rather than
+        # failing the whole meeting (BR-10, EC-3).
+        logger.exception("Diarization failed; continuing without speaker labels")
+        return result, None
+
     # Capture raw PyAnnote turns (with overlaps) before assign_word_speakers
     # collapses them into per-speaker non-overlapping transcript segments.
     # Required by interaction analysis (BR-3.1).

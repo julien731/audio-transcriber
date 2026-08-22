@@ -157,7 +157,7 @@ class TestRunTranscription:
     @patch("backend.services.transcriber.WHISPER_BATCH_SIZE", 16)
     @patch("backend.services.transcriber.WHISPER_MODEL", "large-v3")
     @patch("backend.services.transcriber.WHISPER_DEVICE", "cpu")
-    @patch("backend.services.transcriber.HF_TOKEN", "test-token")
+    @patch("config.current_hf_token", new=lambda: "test-token")
     def test_happy_path_writes_transcript_and_updates_metadata(self, tmp_path: Path):
         mock_whisperx, mock_torch, mock_diarize_cls, mock_assign = self._build_mocks()
         queue = JobQueue()
@@ -210,7 +210,50 @@ class TestRunTranscription:
     @patch("backend.services.transcriber.WHISPER_BATCH_SIZE", 16)
     @patch("backend.services.transcriber.WHISPER_MODEL", "large-v3")
     @patch("backend.services.transcriber.WHISPER_DEVICE", "cpu")
-    @patch("backend.services.transcriber.HF_TOKEN", "")
+    @patch("config.current_hf_token", new=lambda: "test-token")
+    def test_degrades_when_diarization_raises_at_runtime(self, tmp_path: Path):
+        """A token accepted at provisioning but rejected at runtime must not fail
+        the meeting — it completes without speaker labels (BR-10, EC-3)."""
+        mock_whisperx, mock_torch, mock_diarize_cls, mock_assign = self._build_mocks()
+        # Simulate a revoked/unverifiable token: DiarizationPipeline blows up.
+        mock_diarize_cls.side_effect = RuntimeError("401 Unauthorized")
+        queue = JobQueue()
+        meetings_dir = tmp_path / "meetings"
+        meeting_dir = _create_meeting_on_disk(meetings_dir)
+        job = queue.create_job("test-meeting")
+
+        with (
+            patch("backend.services.transcriber.MEETINGS_DIR", meetings_dir),
+            patch("backend.services.transcriber.job_queue", queue),
+            patch.dict(
+                "sys.modules",
+                {
+                    "whisperx": mock_whisperx,
+                    "torch": mock_torch,
+                    "whisperx.diarize": MagicMock(
+                        DiarizationPipeline=mock_diarize_cls,
+                        assign_word_speakers=mock_assign,
+                    ),
+                    "functools": __import__("functools"),
+                    "warnings": __import__("warnings"),
+                },
+            ),
+        ):
+            from backend.services.transcriber import _run_transcription
+
+            _run_transcription("test-meeting", job.id)
+
+        # Transcript still written; meeting READY; diarization was skipped.
+        assert (meeting_dir / "transcript.json").exists()
+        metadata = json.loads((meeting_dir / "metadata.json").read_text())
+        assert metadata["status"] == MeetingStatus.READY.value
+        mock_assign.assert_not_called()
+        assert queue.get_job(job.id).status == JobStatus.COMPLETED
+
+    @patch("backend.services.transcriber.WHISPER_BATCH_SIZE", 16)
+    @patch("backend.services.transcriber.WHISPER_MODEL", "large-v3")
+    @patch("backend.services.transcriber.WHISPER_DEVICE", "cpu")
+    @patch("config.current_hf_token", new=lambda: "")
     def test_skips_diarization_without_hf_token(self, tmp_path: Path):
         mock_whisperx, mock_torch, mock_diarize_cls, mock_assign = self._build_mocks()
         queue = JobQueue()
@@ -245,7 +288,7 @@ class TestRunTranscription:
     @patch("backend.services.transcriber.WHISPER_BATCH_SIZE", 16)
     @patch("backend.services.transcriber.WHISPER_MODEL", "large-v3")
     @patch("backend.services.transcriber.WHISPER_DEVICE", "cpu")
-    @patch("backend.services.transcriber.HF_TOKEN", "")
+    @patch("config.current_hf_token", new=lambda: "")
     def test_error_sets_job_failed_and_updates_metadata(self, tmp_path: Path):
         mock_whisperx = MagicMock()
         mock_whisperx.load_audio.side_effect = RuntimeError("Audio file corrupt")
@@ -288,7 +331,7 @@ class TestRunTranscription:
     @patch("backend.services.transcriber.WHISPER_BATCH_SIZE", 16)
     @patch("backend.services.transcriber.WHISPER_MODEL", "large-v3")
     @patch("backend.services.transcriber.WHISPER_DEVICE", "cpu")
-    @patch("backend.services.transcriber.HF_TOKEN", "")
+    @patch("config.current_hf_token", new=lambda: "")
     def test_discards_results_when_cancelled(self, tmp_path: Path):
         mock_whisperx, mock_torch, mock_diarize_cls, mock_assign = self._build_mocks()
         queue = JobQueue()
@@ -333,7 +376,7 @@ class TestRunTranscription:
     @patch("backend.services.transcriber.WHISPER_BATCH_SIZE", 16)
     @patch("backend.services.transcriber.WHISPER_MODEL", "large-v3")
     @patch("backend.services.transcriber.WHISPER_DEVICE", "cpu")
-    @patch("backend.services.transcriber.HF_TOKEN", "")
+    @patch("config.current_hf_token", new=lambda: "")
     def test_no_speech_detected_raises_error(self, tmp_path: Path):
         mock_whisperx = MagicMock()
         mock_whisperx.load_audio.return_value = MagicMock()
@@ -373,7 +416,7 @@ class TestRunTranscription:
     @patch("backend.services.transcriber.WHISPER_BATCH_SIZE", 16)
     @patch("backend.services.transcriber.WHISPER_MODEL", "large-v3")
     @patch("backend.services.transcriber.WHISPER_DEVICE", "cpu")
-    @patch("backend.services.transcriber.HF_TOKEN", "")
+    @patch("config.current_hf_token", new=lambda: "")
     def test_thai_alignment_uses_custom_model(self, tmp_path: Path):
         mock_whisperx, mock_torch, mock_diarize_cls, mock_assign = self._build_mocks()
         mock_model = mock_whisperx.load_model.return_value
@@ -414,7 +457,7 @@ class TestRunTranscription:
     @patch("backend.services.transcriber.WHISPER_BATCH_SIZE", 16)
     @patch("backend.services.transcriber.WHISPER_MODEL", "large-v3")
     @patch("backend.services.transcriber.WHISPER_DEVICE", "cpu")
-    @patch("backend.services.transcriber.HF_TOKEN", "")
+    @patch("config.current_hf_token", new=lambda: "")
     def test_unsupported_language_skips_alignment(self, tmp_path: Path):
         mock_whisperx, mock_torch, mock_diarize_cls, mock_assign = self._build_mocks()
         mock_model = mock_whisperx.load_model.return_value
@@ -451,7 +494,7 @@ class TestRunTranscription:
     @patch("backend.services.transcriber.WHISPER_BATCH_SIZE", 16)
     @patch("backend.services.transcriber.WHISPER_MODEL", "large-v3")
     @patch("backend.services.transcriber.WHISPER_DEVICE", "cpu")
-    @patch("backend.services.transcriber.HF_TOKEN", "")
+    @patch("config.current_hf_token", new=lambda: "")
     def test_english_alignment_uses_default_model(self, tmp_path: Path):
         mock_whisperx, mock_torch, mock_diarize_cls, mock_assign = self._build_mocks()
 
@@ -845,7 +888,7 @@ class TestTranscriptionRouting:
     @patch("backend.services.transcriber.WHISPER_BATCH_SIZE", 16)
     @patch("backend.services.transcriber.WHISPER_MODEL", "large-v3")
     @patch("backend.services.transcriber.WHISPER_DEVICE", "cpu")
-    @patch("backend.services.transcriber.HF_TOKEN", "")
+    @patch("config.current_hf_token", new=lambda: "")
     def test_single_language_runs_unchanged_single_path(self, tmp_path: Path):
         """Exactly one expected language → existing single path, forcing that language (EC-7, AC2)."""
         mw, mt, mdc, ma = self._mocks()
@@ -875,7 +918,7 @@ class TestTranscriptionRouting:
     @patch("backend.services.transcriber.WHISPER_BATCH_SIZE", 16)
     @patch("backend.services.transcriber.WHISPER_MODEL", "large-v3")
     @patch("backend.services.transcriber.WHISPER_DEVICE", "cpu")
-    @patch("backend.services.transcriber.HF_TOKEN", "")
+    @patch("config.current_hf_token", new=lambda: "")
     def test_no_expected_languages_auto_detects_single(self, tmp_path: Path):
         """Zero expected languages → single path with auto-detect (language=None)."""
         mw, mt, mdc, ma = self._mocks()
@@ -931,7 +974,7 @@ class TestTranscriptionRouting:
     @patch("backend.services.transcriber.WHISPER_BATCH_SIZE", 16)
     @patch("backend.services.transcriber.WHISPER_MODEL", "large-v3")
     @patch("backend.services.transcriber.WHISPER_DEVICE", "cpu")
-    @patch("backend.services.transcriber.HF_TOKEN", "test-token")
+    @patch("config.current_hf_token", new=lambda: "test-token")
     def test_two_languages_align_diarize_and_preserve_language(self, tmp_path: Path):
         """Two+ expected languages → multilingual path now aligns, diarizes, assigns
         speakers, and preserves each segment's detected language (BR-8, AC1)."""
@@ -977,7 +1020,7 @@ class TestTranscriptionRouting:
     @patch("backend.services.transcriber.WHISPER_BATCH_SIZE", 16)
     @patch("backend.services.transcriber.WHISPER_MODEL", "large-v3")
     @patch("backend.services.transcriber.WHISPER_DEVICE", "cpu")
-    @patch("backend.services.transcriber.HF_TOKEN", "test-token")
+    @patch("config.current_hf_token", new=lambda: "test-token")
     def test_multilingual_audio_analysis_gets_dominant_and_turns(self, tmp_path: Path):
         """Audio analysis on the multilingual path receives the dominant language and
         the diarization turns captured during speaker assignment."""
@@ -1012,7 +1055,7 @@ class TestTranscriptionRouting:
     @patch("backend.services.transcriber.WHISPER_BATCH_SIZE", 16)
     @patch("backend.services.transcriber.WHISPER_MODEL", "large-v3")
     @patch("backend.services.transcriber.WHISPER_DEVICE", "cpu")
-    @patch("backend.services.transcriber.HF_TOKEN", "")
+    @patch("config.current_hf_token", new=lambda: "")
     def test_multilingual_without_hf_token_completes_unknown_speakers(self, tmp_path: Path):
         """Multilingual path with no HF_TOKEN still aligns and completes; diarization
         is skipped so segments keep UNKNOWN speakers (no crash)."""

@@ -105,3 +105,68 @@ class TestConfigEnvOverrides:
 
         importlib.reload(config)
         assert config.HF_TOKEN == "hf_test_token_123"
+
+
+class TestBundledModeIsolation:
+    """In bundled mode the Application Support config is the sole source of
+    truth; ambient env vars and .env are ignored (BR-19, BR-21)."""
+
+    @pytest.fixture(autouse=True)
+    def _restore_config(self):
+        yield
+        import config
+
+        importlib.reload(config)
+
+    def test_bundled_reads_service_config_and_ignores_env(self, monkeypatch, tmp_path: Path):
+        from backend.schemas import ServiceConfig
+        from backend.services import app_paths, service_config
+
+        base = tmp_path / "AppSupport"
+        monkeypatch.setattr(app_paths, "_APP_SUPPORT_OVERRIDE", base)
+        monkeypatch.setattr(app_paths.sys, "frozen", True, raising=False)
+
+        # Ambient values that MUST be ignored.
+        monkeypatch.setenv("HF_TOKEN", "env_token")
+        monkeypatch.setenv("DATA_DIR", str(tmp_path / "env_data"))
+        monkeypatch.setenv("WHISPER_MODEL", "base")
+
+        service_config.save(
+            ServiceConfig(
+                hf_token="cfg_token",
+                whisper_model="large-v3",
+                data_dir=str(base / "data"),
+                models_dir=str(base / "models"),
+            )
+        )
+
+        import config
+
+        importlib.reload(config)
+
+        assert config.is_bundled() is True
+        assert config.HF_TOKEN == "cfg_token"
+        assert config.current_hf_token() == "cfg_token"
+        assert config.WHISPER_MODEL == "large-v3"
+        assert config.DATA_DIR == base / "data"
+        assert config.MODELS_DIR == base / "models"
+
+    def test_current_hf_token_reflects_runtime_update(self, monkeypatch, tmp_path: Path):
+        from backend.schemas import ServiceConfig
+        from backend.services import app_paths, service_config
+
+        base = tmp_path / "AppSupport"
+        monkeypatch.setattr(app_paths, "_APP_SUPPORT_OVERRIDE", base)
+        monkeypatch.setattr(app_paths.sys, "frozen", True, raising=False)
+        service_config.save(ServiceConfig(hf_token="", data_dir=str(base / "data"), models_dir=str(base / "models")))
+
+        import config
+
+        importlib.reload(config)
+        assert config.current_hf_token() == ""
+
+        # Provisioning writes a token at runtime — no restart required (BR-8).
+        service_config.save(
+            ServiceConfig(hf_token="new_token", data_dir=str(base / "data"), models_dir=str(base / "models"))
+        )
+        assert config.current_hf_token() == "new_token"
