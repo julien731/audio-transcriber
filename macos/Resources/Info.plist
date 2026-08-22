@@ -27,5 +27,15 @@
 	<true/>
 	<key>LSApplicationCategoryType</key>
 	<string>public.app-category.productivity</string>
+	<!-- Sparkle auto-update (plan Artifact C). The feed lives at the stable
+	     "latest" release asset; enclosures are EdDSA-signed (not the feed). The
+	     public key below is a PLACEHOLDER — release-macos.yml injects the real
+	     SUPublicEDKey whose private half is a GitHub Actions secret. -->
+	<key>SUFeedURL</key>
+	<string>https://github.com/nimblehq/audio-transcriber/releases/latest/download/appcast.xml</string>
+	<key>SUPublicEDKey</key>
+	<string>REPLACE_WITH_SPARKLE_ED_PUBLIC_KEY</string>
+	<key>SUEnableAutomaticChecks</key>
+	<true/>
 </dict>
 </plist>

@@ -28,6 +28,11 @@ let package = Package(
         .executable(name: "MeetingTranscriberKitTests", targets: ["MeetingTranscriberKitTests"]),
         .executable(name: "MeetingTranscriberIntegrationTests", targets: ["MeetingTranscriberIntegrationTests"]),
     ],
+    dependencies: [
+        // Pinned exactly (security-sensitive updater): 2.9.6 is the newest stable
+        // at plan time, incl. the symlink + root-privesc fixes (plan Artifact C).
+        .package(url: "https://github.com/sparkle-project/Sparkle", exact: "2.9.6"),
+    ],
     targets: [
         .target(
             name: "MeetingTranscriberKit",
@@ -35,7 +40,10 @@ let package = Package(
         ),
         .executableTarget(
             name: "MeetingTranscriberApp",
-            dependencies: ["MeetingTranscriberKit"],
+            dependencies: [
+                "MeetingTranscriberKit",
+                .product(name: "Sparkle", package: "Sparkle"),
+            ],
             swiftSettings: [.swiftLanguageMode(.v5)]
         ),
         .executableTarget(

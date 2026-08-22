@@ -1,0 +1,109 @@
+# Reusable macOS build/sign/publish for the native app (plan Artifact C / TD-5).
+#
+# Invoked from release.yml as a job in the SAME run (not tag-triggered): the
+# GITHUB_TOKEN recursion guard means a semantic-release tag/release triggers no
+# other workflow, so this must run within release.yml. It embeds the pinned real
+# service (Decision B), assembles + signs the .app + Sparkle, produces an
+# EdDSA-signed enclosure, updates the appcast, uploads to the release, and then
+# flips the draft to published.
+#
+# NOTE: several steps (real service embed, EdDSA signing keys, v1→v2 install
+# smoke) are finalized/verified at Milestone D0 on the maintainer/CI machine.
+name: Release macOS App
+
+on:
+  workflow_call:
+    inputs:
+      version:
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  build-macos:
+    runs-on: macos-14
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Select Xcode
+        run: sudo xcode-select -s /Applications/Xcode.app
+
+      # Decision B: fetch the pinned, checksummed self-contained service artifact
+      # (built once per service version on an arm64 machine) and verify its
+      # manifest against the app-repo's pinned expectation before embedding.
+      - name: Fetch + verify pinned service artifact
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          bash macos/scripts/fetch_service.sh   # downloads, checks sha256/commit/arch/version vs service-manifest.json
+
+      - name: Inject version into Info.plist
+        run: |
+          /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString ${{ inputs.version }}" macos/Resources/Info.plist
+          /usr/libexec/PlistBuddy -c "Set :CFBundleVersion ${{ inputs.version }}" macos/Resources/Info.plist
+
+      - name: Inject Sparkle public key
+        env:
+          SPARKLE_ED_PUBLIC_KEY: ${{ secrets.SPARKLE_ED_PUBLIC_KEY }}
+        run: |
+          /usr/libexec/PlistBuddy -c "Set :SUPublicEDKey ${SPARKLE_ED_PUBLIC_KEY}" macos/Resources/Info.plist
+
+      - name: Build + assemble .app (release, embeds real service + Sparkle)
+        run: |
+          cd macos && bash scripts/build_app.sh release
+
+      - name: Zip app + measure final enclosure size
+        id: zip
+        run: |
+          cd macos/build
+          ditto -c -k --keepParent MeetingTranscriber.app "MeetingTranscriber-${{ inputs.version }}.zip"
+          SIZE=$(stat -f%z "MeetingTranscriber-${{ inputs.version }}.zip")
+          echo "size=${SIZE}" >> "$GITHUB_OUTPUT"
+          # >2 GB fallback (plan finding #1): GitHub asset limit is 2 GB. If the
+          # FINAL zip exceeds it, external enclosure hosting requires product
+          # approval + a documented BR-21 deviation — fail loudly rather than
+          # silently ship an un-installable enclosure.
+          if [ "${SIZE}" -gt 2147483648 ]; then
+            echo "::error::Final app zip exceeds 2 GB (${SIZE}); external enclosure hosting requires BR-21 sign-off (see plan)."
+            exit 1
+          fi
+
+      - name: Sign enclosure + update appcast
+        env:
+          SPARKLE_ED_PRIVATE_KEY: ${{ secrets.SPARKLE_ED_PRIVATE_KEY }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Download the current appcast (retain prior entries) and produce the merged feed.
+          gh release download --pattern appcast.xml --dir macos/build --clobber \
+            "$(gh release list --limit 20 --json tagName,isLatest -q '.[]|select(.isLatest)|.tagName')" || true
+          VERSION="${{ inputs.version }}" \
+          ZIP_PATH="macos/build/MeetingTranscriber-${{ inputs.version }}.zip" \
+          ENCLOSURE_URL="https://github.com/${{ github.repository }}/releases/download/${{ inputs.version }}/MeetingTranscriber-${{ inputs.version }}.zip" \
+          SPARKLE_BIN="$(find ~/Library/Developer/Xcode/DerivedData /tmp -name generate_appcast -type f 2>/dev/null | head -1 | xargs dirname)" \
+          PREVIOUS_APPCAST="macos/build/appcast.xml" \
+          OUT_APPCAST="macos/build/appcast.xml" \
+          MIN_SYSTEM_VERSION="13.0" \
+          bash macos/scripts/make_appcast.sh
+
+      - name: Verify v1→v2 install (localhost fixture)
+        run: |
+          # Serves the merged appcast + new zip from a localhost fixture (draft
+          # assets aren't reachable unauthenticated); the test build differs only
+          # in SUFeedURL. Proves Sparkle accepts the new item before publishing.
+          bash macos/scripts/verify_update.sh || { echo "::error::v1→v2 update smoke failed"; exit 1; }
+
+      - name: Upload artifacts + publish the draft
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release upload "${{ inputs.version }}" \
+            "macos/build/MeetingTranscriber-${{ inputs.version }}.zip" \
+            "macos/build/appcast.xml" --clobber
+          # Only now flip the draft to published (finding #7): a failed job above
+          # leaves the release a draft, never a published version without an app.
+          gh release edit "${{ inputs.version }}" --draft=false

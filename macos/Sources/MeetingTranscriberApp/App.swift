@@ -9,5 +9,10 @@ struct MeetingTranscriberApp: App {
             RootView(appState: appDelegate.appState)
                 .frame(minWidth: 720, minHeight: 480)
         }
+        .commands {
+            CommandGroup(after: .appInfo) {
+                Button("Check for Updates…") { appDelegate.updater.checkForUpdates() }
+            }
+        }
     }
 }

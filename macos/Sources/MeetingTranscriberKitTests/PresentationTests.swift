@@ -27,6 +27,16 @@ func runPresentationTests() {
         expectEqual(MeetingStatus.error.badge, StatusBadge(label: "Error", severity: .danger), "error")
     }
 
+    suite("QuitPolicy.needsConfirmation") {
+        func summary(_ status: MeetingStatus) -> MeetingSummary {
+            let json = "{\"id\":\"m\",\"title\":\"t\",\"type\":\"other\",\"created_at\":\"2026-08-22T10:00:00\",\"duration_seconds\":null,\"status\":\"\(status.rawValue)\"}"
+            return try! JSONCoding.makeDecoder().decode(MeetingSummary.self, from: Data(json.utf8))
+        }
+        expect(QuitPolicy.needsConfirmation(meetings: [summary(.ready), summary(.processing)]), "processing → confirm")
+        expect(!QuitPolicy.needsConfirmation(meetings: [summary(.ready), summary(.error)]), "no processing → no confirm")
+        expect(!QuitPolicy.needsConfirmation(meetings: []), "empty → no confirm")
+    }
+
     suite("JobStatus.isTerminal") {
         expect(JobStatus.completed.isTerminal, "completed terminal")
         expect(JobStatus.failed.isTerminal, "failed terminal")

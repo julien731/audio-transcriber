@@ -20,6 +20,8 @@ final class MeetingsStore: ObservableObject {
         defer { isLoading = false }
         do {
             meetings = try await client.listMeetings()
+            // Feeds the updater's defer-while-busy gate (plan Artifact C).
+            BusyState.shared.active = QuitPolicy.needsConfirmation(meetings: meetings)
             errorMessage = nil
         } catch {
             errorMessage = Self.message(for: error)

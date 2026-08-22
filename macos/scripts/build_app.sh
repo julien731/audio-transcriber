@@ -1,10 +1,11 @@
 #!/usr/bin/env bash
-# Assemble the MeetingTranscriber .app bundle (plan Milestone D1 / Artifact D).
+# Assemble the MeetingTranscriber .app bundle (plan Milestone D1 + Artifact C).
 #
-# D1 embeds the stub service (scripts/stub_service.py). Milestone D0 swaps in the
-# real self-contained PyInstaller service under Contents/Resources/service/ and
-# the Sparkle framework under Contents/Frameworks/ (slice 10) with inner→outer
-# signing. This script ad-hoc signs the bundle (self-signing; plan BR-23).
+# D1 embeds the stub service (scripts/stub_service.py); Milestone D0 swaps in the
+# real self-contained PyInstaller service under Contents/Resources/service/.
+# Sparkle.framework is embedded and signed inner→outer; the app is ad-hoc signed
+# (self-signing, BR-23). On a signed build the EdDSA appcast signature is the
+# trust anchor, so ad-hoc signing is acceptable (with disable-library-validation).
 set -euo pipefail
 
 CONFIG="${1:-debug}"
@@ -17,18 +18,36 @@ BIN_PATH="$(swift build -c "${CONFIG}" --show-bin-path)"
 
 APP="${ROOT}/build/MeetingTranscriber.app"
 CONTENTS="${APP}/Contents"
+FRAMEWORKS="${CONTENTS}/Frameworks"
 echo "==> assembling ${APP}"
 rm -rf "${APP}"
-mkdir -p "${CONTENTS}/MacOS" "${CONTENTS}/Resources/service" "${CONTENTS}/Frameworks"
+mkdir -p "${CONTENTS}/MacOS" "${CONTENTS}/Resources/service" "${FRAMEWORKS}"
 
 cp "${BIN_PATH}/MeetingTranscriberApp" "${CONTENTS}/MacOS/MeetingTranscriber"
 cp "${ROOT}/Resources/Info.plist" "${CONTENTS}/Info.plist"
 cp "${ROOT}/scripts/stub_service.py" "${CONTENTS}/Resources/service/stub_service.py"
 
-# Ad-hoc sign (self-signed). Real builds sign inner→outer once Sparkle is bundled.
-echo "==> codesign (ad-hoc)"
-codesign --force --deep --sign - \
-	--entitlements "${ROOT}/Resources/MeetingTranscriber.entitlements" \
-	"${APP}" || echo "warning: codesign failed (expected without a signing identity in some envs)"
+# Embed Sparkle.framework preserving symlinks + executable permissions.
+if [ -d "${BIN_PATH}/Sparkle.framework" ]; then
+  cp -RP "${BIN_PATH}/Sparkle.framework" "${FRAMEWORKS}/"
+fi
+
+SIGN_IDENTITY="${CODESIGN_IDENTITY:--}"   # ad-hoc by default; override for a real identity
+ENTITLEMENTS="${ROOT}/Resources/MeetingTranscriber.entitlements"
+
+sign() { codesign --force --options runtime --timestamp=none --sign "${SIGN_IDENTITY}" "$@"; }
+
+# Inner→outer signing order for Sparkle (XPC services → helpers → framework → app).
+FW="${FRAMEWORKS}/Sparkle.framework"
+if [ -d "${FW}" ]; then
+  for xpc in "${FW}/Versions/B/XPCServices/"*.xpc; do [ -e "${xpc}" ] && sign "${xpc}"; done
+  [ -e "${FW}/Versions/B/Autoupdate" ] && sign "${FW}/Versions/B/Autoupdate"
+  [ -d "${FW}/Versions/B/Updater.app" ] && sign "${FW}/Versions/B/Updater.app"
+  sign "${FW}"
+fi
+
+echo "==> codesign app (${SIGN_IDENTITY})"
+codesign --force --sign "${SIGN_IDENTITY}" --entitlements "${ENTITLEMENTS}" "${APP}" \
+  || echo "warning: codesign failed (expected without a signing identity in some envs)"
 
 echo "==> built ${APP}"
