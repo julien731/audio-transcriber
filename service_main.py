@@ -20,6 +20,16 @@ from backend.services import app_paths
 
 HOST = "127.0.0.1"
 SERVICE_FILE = "service.json"
+# Launch-coordination nonce set by the spawning app (native macOS app, plan
+# Artifact A). It lets the parent reject a stale/foreign service.json after PID
+# reuse. This is coordination, not configuration, so it is exempt in spirit from
+# the BR-21 "ignore ambient env" rule; when unset the service starts normally and
+# omits the nonce (dev run.py path, any non-app client).
+NONCE_ENV = "MT_SERVICE_NONCE"
+
+
+def service_nonce() -> str:
+    return os.environ.get(NONCE_ENV, "")
 
 
 def bind_free_socket(host: str = HOST, retries: int = 5) -> socket.socket:
@@ -45,16 +55,26 @@ def service_file_path() -> Path:
     return app_paths.app_support_dir() / SERVICE_FILE
 
 
-def write_service_file(port: int, pid: int | None = None) -> Path:
-    """Persist the chosen port and pid for clients that discover via file."""
+def write_service_file(port: int, pid: int | None = None, nonce: str = "") -> Path:
+    """Persist the chosen port and pid for clients that discover via file.
+
+    The launch nonce is included only when set, so an empty nonce keeps the file
+    byte-identical to the pre-nonce format (backward compatible).
+    """
     path = service_file_path()
-    path.write_text(json.dumps({"port": port, "pid": os.getpid() if pid is None else pid}), encoding="utf-8")
+    payload: dict[str, object] = {"port": port, "pid": os.getpid() if pid is None else pid}
+    if nonce:
+        payload["nonce"] = nonce
+    path.write_text(json.dumps(payload), encoding="utf-8")
     return path
 
 
-def handshake_line(port: int) -> str:
-    """Machine-readable stdout line announcing the service's port."""
-    return json.dumps({"event": "ready", "port": port})
+def handshake_line(port: int, nonce: str = "") -> str:
+    """Machine-readable stdout line announcing the service's port (and nonce)."""
+    payload: dict[str, object] = {"event": "ready", "port": port}
+    if nonce:
+        payload["nonce"] = nonce
+    return json.dumps(payload)
 
 
 def _emit_error(message: str) -> None:
@@ -69,8 +89,9 @@ def main() -> int:
         return 1
 
     port = sock.getsockname()[1]
-    write_service_file(port)
-    print(handshake_line(port), flush=True)
+    nonce = service_nonce()
+    write_service_file(port, nonce=nonce)
+    print(handshake_line(port, nonce=nonce), flush=True)
 
     import uvicorn
 

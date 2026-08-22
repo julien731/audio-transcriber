@@ -44,6 +44,27 @@ class TestServiceFileAndHandshake:
         line = service_main.handshake_line(12345)
         assert json.loads(line) == {"event": "ready", "port": 12345}
 
+    def test_write_service_file_includes_nonce_when_set(self):
+        path = service_main.write_service_file(54321, pid=999, nonce="abc123")
+        data = json.loads(path.read_text())
+        assert data == {"port": 54321, "pid": 999, "nonce": "abc123"}
+
+    def test_handshake_line_includes_nonce_when_set(self):
+        line = service_main.handshake_line(12345, nonce="abc123")
+        assert json.loads(line) == {"event": "ready", "port": 12345, "nonce": "abc123"}
+
+    def test_empty_nonce_is_omitted(self):
+        # Backward compatibility: an unset nonce keeps the pre-nonce format.
+        assert "nonce" not in json.loads(service_main.handshake_line(1))
+        path = service_main.write_service_file(1, pid=2, nonce="")
+        assert "nonce" not in json.loads(path.read_text())
+
+    def test_service_nonce_reads_env(self, monkeypatch):
+        monkeypatch.setenv(service_main.NONCE_ENV, "n-42")
+        assert service_main.service_nonce() == "n-42"
+        monkeypatch.delenv(service_main.NONCE_ENV, raising=False)
+        assert service_main.service_nonce() == ""
+
 
 class TestMainErrorPath:
     def test_returns_1_and_emits_error_when_bind_fails(self, monkeypatch, capsys):
