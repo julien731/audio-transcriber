@@ -88,6 +88,16 @@ final class MeetingDetailStore: ObservableObject {
         }
     }
 
+    /// Re-fetch detail after an edit (speaker rename, metadata change) without
+    /// touching the poll loop.
+    func reloadDetail() async {
+        if let refreshed = try? await client.meeting(id: meetingId) {
+            detail = refreshed
+        }
+    }
+
+    func setError(_ message: String) { errorMessage = message }
+
     func stop() { pollTask?.cancel() }
 
     private static func message(for error: Error) -> String {

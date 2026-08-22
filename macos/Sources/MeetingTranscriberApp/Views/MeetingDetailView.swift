@@ -72,15 +72,6 @@ struct MeetingDetailView: View {
     }
 
     private func readyState(_ detail: MeetingDetail) -> some View {
-        // Transcript viewer + audio + tabs arrive in slices 7–9. For now confirm
-        // the transcript is present.
-        VStack(spacing: 8) {
-            Image(systemName: "checkmark.circle.fill").font(.system(size: 36)).foregroundStyle(.green)
-            Text(detail.metadata.title).font(.title3.weight(.semibold))
-            Text("\(detail.transcript?.segments.count ?? 0) segments · transcript viewer arrives next")
-                .foregroundStyle(.secondary)
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .navigationTitle(detail.metadata.title)
+        TranscriptContainerView(store: store, detail: detail)
     }
 }

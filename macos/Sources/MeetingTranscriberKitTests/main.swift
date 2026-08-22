@@ -8,5 +8,8 @@ runAPIClientTests()
 runProvisioningControllerTests()
 runPresentationTests()
 runUploadValidationTests()
+runSpeakerColorTests()
+runPreferencesTests()
+runPlainTextRendererTests()
 
 TestRunner.shared.finish()
