@@ -205,3 +205,49 @@ class JobInfo(BaseModel):
 class SegmentSpeakerUpdate(BaseModel):
     segment_id: str
     speaker_name: str
+
+
+class ServiceConfig(BaseModel):
+    """Local service configuration persisted under Application Support.
+
+    Empty ``data_dir``/``models_dir`` are resolved to defaults under the
+    Application Support directory by ``service_config.load()``.
+    """
+
+    hf_token: str = ""
+    whisper_model: str = "large-v3"
+    data_dir: str = ""
+    models_dir: str = ""
+    provisioning_completed: bool = False
+    imported_from: str | None = None
+
+
+class DownloadState(str, Enum):
+    IDLE = "idle"
+    DOWNLOADING = "downloading"
+    COMPLETED = "completed"
+    FAILED = "failed"
+
+
+class HealthResponse(BaseModel):
+    status: str  # "ready" | "starting"
+    provisioning_completed: bool
+    diarization_available: bool
+
+
+class ProvisioningStatus(BaseModel):
+    provisioning_completed: bool
+    models_present: bool
+    whisper_model: str
+    diarization_available: bool
+    download_state: DownloadState = DownloadState.IDLE
+    download_progress: int = 0
+    download_error: str | None = None
+
+
+class TokenUpdate(BaseModel):
+    hf_token: str = ""
+
+
+class AnalysisPromptResponse(BaseModel):
+    prompt: str
