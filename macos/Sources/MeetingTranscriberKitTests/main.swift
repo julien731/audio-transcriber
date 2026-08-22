@@ -11,5 +11,6 @@ runUploadValidationTests()
 runSpeakerColorTests()
 runPreferencesTests()
 runPlainTextRendererTests()
+runOverviewAggregationsTests()
 
 TestRunner.shared.finish()

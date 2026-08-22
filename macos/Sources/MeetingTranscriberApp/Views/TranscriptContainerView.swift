@@ -67,8 +67,10 @@ struct TranscriptContainerView: View {
         switch tab {
         case .transcript:
             if let transcript = detail.transcript {
+                let showInsights = SegmentInsights.hasCompletedAnalysis(metadata: detail.metadata, analysis: detail.audioAnalysis)
                 TranscriptTabView(store: store, transcript: transcript, speakers: speakers,
-                                  language: detail.metadata.language, audio: audio)
+                                  language: detail.metadata.language, audio: audio,
+                                  insights: showInsights ? SegmentInsights.index(detail.audioAnalysis) : [:])
             } else { emptyTranscript }
         case .overview:
             OverviewTabView(detail: detail)

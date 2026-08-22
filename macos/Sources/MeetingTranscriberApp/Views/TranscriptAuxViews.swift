@@ -137,15 +137,6 @@ struct MeetingEditView: View {
     }
 }
 
-/// Overview tab — filled in slice 8 (ported aggregations).
-struct OverviewTabView: View {
-    let detail: MeetingDetail
-    var body: some View {
-        Text("Overview arrives in slice 8.").foregroundStyle(.secondary)
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-    }
-}
-
 /// Analysis tab — filled in slice 9 (assembled prompt).
 struct AnalysisTabView: View {
     let client: APIClient

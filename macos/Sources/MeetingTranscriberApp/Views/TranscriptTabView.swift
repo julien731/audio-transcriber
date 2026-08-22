@@ -11,6 +11,7 @@ struct TranscriptTabView: View {
     let speakers: [String: String]
     let language: String
     @ObservedObject var audio: AudioPlaybackController
+    var insights: [String: SegmentInsights.SegmentInsight] = [:]
 
     @State private var renaming: TranscriptSegment?
     @State private var customName = ""
@@ -58,6 +59,9 @@ struct TranscriptTabView: View {
             Text(segment.text)
                 .textSelection(.enabled)
                 .foregroundStyle(isActive ? .primary : .secondary)
+            if let insight = insights[segment.id] {
+                SegmentInsightsRow(insight: insight, text: segment.text)
+            }
         }
         .padding(10)
         .background(isActive ? color.opacity(0.12) : .clear, in: RoundedRectangle(cornerRadius: 8))
@@ -124,5 +128,65 @@ struct TranscriptTabView: View {
                 store.setError((error as? APIError)?.userMessage ?? "Could not rename the speaker.")
             }
         }
+    }
+}
+
+/// Inline per-segment insight badges (emotion, prosody, interaction, mismatch).
+private struct SegmentInsightsRow: View {
+    let insight: SegmentInsights.SegmentInsight
+    let text: String
+
+    var body: some View {
+        HStack(spacing: 8) {
+            if let emotion = insight.emotion {
+                Text(SegmentInsights.label(for: emotion.primaryEmotion) + (emotion.lowConfidence ? "?" : ""))
+                    .font(.caption2.weight(.medium))
+                    .padding(.horizontal, 6).padding(.vertical, 1)
+                    .background(.quaternary, in: Capsule())
+                    .foregroundStyle(emotion.lowConfidence ? .secondary : .primary)
+                    .help("Tone: \(SegmentInsights.label(for: emotion.primaryEmotion)) (confidence \(Int(emotion.confidence * 100))%)")
+            }
+            if let prosody = insight.prosody {
+                ProsodyIndicator(prosody: prosody)
+            }
+            if SegmentInsights.isWordToneMismatch(emotion: insight.emotion, text: text) {
+                Image(systemName: "exclamationmark.bubble")
+                    .font(.caption2).foregroundStyle(.orange)
+                    .help("Word/tone mismatch: agreement wording over a frustrated or uncertain tone.")
+            }
+            if let interaction = insight.interaction,
+               interaction.precededByInterruption || interaction.followedByInterruption || interaction.hesitationBefore > 0 {
+                Image(systemName: "arrow.triangle.2.circlepath")
+                    .font(.caption2).foregroundStyle(.secondary)
+                    .help(interactionTooltip(interaction))
+            }
+        }
+    }
+
+    private func interactionTooltip(_ interaction: SegmentInteraction) -> String {
+        var parts: [String] = []
+        if interaction.precededByInterruption { parts.append("interrupted") }
+        if interaction.followedByInterruption { parts.append("interrupts next") }
+        if interaction.hesitationBefore > 0 { parts.append(String(format: "%.1fs pause before", interaction.hesitationBefore)) }
+        return parts.joined(separator: ", ")
+    }
+}
+
+/// Three-bar prosody indicator (volume / pitch / rate), tooltip with details.
+private struct ProsodyIndicator: View {
+    let prosody: ProsodyAnnotation
+
+    var body: some View {
+        HStack(spacing: 2) {
+            ForEach(0..<3, id: \.self) { _ in
+                RoundedRectangle(cornerRadius: 1).fill(.tertiary).frame(width: 3, height: 8)
+            }
+        }
+        .help(tooltip)
+    }
+
+    private var tooltip: String {
+        String(format: "Volume %.2f · Pitch %.0f Hz · Rate %.0f wpm · Pause %.2f",
+               prosody.volumeMean, prosody.pitchMean, prosody.speakingRate, prosody.pauseRatio)
     }
 }
