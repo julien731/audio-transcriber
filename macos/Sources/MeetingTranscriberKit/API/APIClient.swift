@@ -50,7 +50,7 @@ public final class APIClient {
 
     /// Multipart upload that starts a transcription (`POST /api/meetings`).
     public func createMeeting(_ upload: MeetingUpload) async throws -> StartResponse {
-        let boundary = "MТBoundary-\(UUID().uuidString)"
+        let boundary = "MTBoundary-\(UUID().uuidString)"
         let body = upload.multipartBody(boundary: boundary)
         return try await decode(from: send(
             method: "POST",
