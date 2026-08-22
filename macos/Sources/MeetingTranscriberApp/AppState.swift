@@ -15,13 +15,16 @@ final class AppState: ObservableObject {
 
     @Published private(set) var phase: Phase = .starting
 
-    private let supervisor = ServiceSupervisor()
+    private var supervisor = ServiceSupervisor()
     private let nonce = UUID().uuidString
 
     // MARK: Launch
 
     func start() {
         phase = .starting
+        // A `Process` cannot be re-run, so `restart()` needs a fresh supervisor;
+        // reusing the prior one makes every relaunch fail at `process.run()`.
+        supervisor = ServiceSupervisor()
         supervisor.onUnexpectedTermination = { [weak self] status in
             Task { @MainActor in
                 self?.phase = .serviceFailed("The transcription service exited unexpectedly (status \(status)). Restart to continue.")
