@@ -9,11 +9,17 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from backend.routers import analysis, jobs, meetings
+from backend.services import service_runtime
+from backend.services.data_import import run_first_run_import
 from backend.services.recovery import recover_stuck_meetings
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+    # Bundled-only: redirect model cache + ffmpeg into the bundle, then import a
+    # prior Terminal installation's meetings. No-ops in a dev checkout (BR-18).
+    service_runtime.bootstrap()
+    run_first_run_import()
     recover_stuck_meetings()
     yield
 
