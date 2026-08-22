@@ -3,5 +3,6 @@
 
 runServiceHandshakeTests()
 runServiceDiscoveryTests()
+runModelDecodingTests()
 
 TestRunner.shared.finish()
