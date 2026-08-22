@@ -6,10 +6,10 @@ import AppKit
 /// - on quit, the embedded service is shut down cleanly (BR-5).
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
-    let bootstrap = BootstrapModel()
+    let appState = AppState()
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        bootstrap.start()
+        appState.start()
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
@@ -24,6 +24,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationWillTerminate(_ notification: Notification) {
-        bootstrap.shutdown()
+        appState.shutdown()
     }
 }

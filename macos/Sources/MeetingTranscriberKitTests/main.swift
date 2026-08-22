@@ -5,5 +5,6 @@ runServiceHandshakeTests()
 runServiceDiscoveryTests()
 runModelDecodingTests()
 runAPIClientTests()
+runProvisioningControllerTests()
 
 TestRunner.shared.finish()
