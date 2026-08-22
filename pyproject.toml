@@ -17,6 +17,9 @@ fail_under = 80
 [tool.ruff]
 line-length = 120
 target-version = "py312"
+# Ruff only lints/formats Python here; exclude Markdown so newer ruff versions
+# don't reformat fenced code blocks in docs.
+extend-exclude = ["**/*.md"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "W"]
