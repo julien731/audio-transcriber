@@ -19,7 +19,10 @@ struct MainView: View {
                 .frame(minWidth: 280)
         } detail: {
             if let selection {
-                MeetingDetailPlaceholder(meetingId: selection)
+                MeetingDetailView(client: store.client, meetingId: selection) {
+                    Task { await store.load() }
+                }
+                .id(selection)
             } else {
                 EmptyDetailView()
             }
@@ -30,7 +33,10 @@ struct MainView: View {
             }
         }
         .sheet(isPresented: $showingUpload) {
-            Text("Upload arrives in slice 6.").padding(40)
+            UploadView(client: store.client) { newMeetingId in
+                Task { await store.load() }
+                selection = newMeetingId
+            }
         }
     }
 }
@@ -42,19 +48,6 @@ private struct EmptyDetailView: View {
             Image(systemName: "waveform").font(.system(size: 40)).foregroundStyle(.secondary)
             Text("Select a meeting").font(.title3.weight(.semibold))
             Text("Choose a meeting to view its transcript.").foregroundStyle(.secondary)
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-    }
-}
-
-/// Temporary detail pane; replaced by the transcript viewer in slice 7.
-private struct MeetingDetailPlaceholder: View {
-    let meetingId: String
-    var body: some View {
-        VStack(spacing: 8) {
-            Image(systemName: "doc.text").font(.system(size: 36)).foregroundStyle(.secondary)
-            Text("Meeting \(meetingId)").font(.headline)
-            Text("Transcript viewer arrives in the next slices.").foregroundStyle(.secondary)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }

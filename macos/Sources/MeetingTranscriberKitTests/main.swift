@@ -7,5 +7,6 @@ runModelDecodingTests()
 runAPIClientTests()
 runProvisioningControllerTests()
 runPresentationTests()
+runUploadValidationTests()
 
 TestRunner.shared.finish()
