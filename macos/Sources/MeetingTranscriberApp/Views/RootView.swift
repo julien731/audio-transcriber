@@ -14,7 +14,7 @@ struct RootView: View {
         case let .setup(controller, client):
             SetupWizardView(controller: controller) { appState.finishSetup(client: client) }
         case let .ready(client):
-            MainPlaceholderView(client: client)
+            MainView(client: client)
         }
     }
 }
@@ -43,22 +43,6 @@ struct ServiceErrorView: View {
             Text("The transcription service isn’t running").font(.title2.weight(.semibold))
             Text(message).multilineTextAlignment(.center).foregroundStyle(.secondary)
             Button("Restart service", action: onRetry).keyboardShortcut(.defaultAction)
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .padding(40)
-    }
-}
-
-/// Placeholder for the main window; replaced by the meeting browser in slice 5.
-struct MainPlaceholderView: View {
-    let client: APIClient
-
-    var body: some View {
-        VStack(spacing: 12) {
-            Image(systemName: "checkmark.seal.fill").font(.system(size: 40)).foregroundStyle(.green)
-            Text("Ready").font(.title2.weight(.semibold))
-            Text("Setup complete. The meeting workspace arrives in the next slice.")
-                .foregroundStyle(.secondary).multilineTextAlignment(.center)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .padding(40)
