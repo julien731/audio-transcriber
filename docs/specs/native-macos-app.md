@@ -53,7 +53,7 @@ Out of scope:
 
 ### Maintainer (app publisher)
 
-- As a **Maintainer**, I can build a signed `.app` bundle that embeds the local service and publish it to a shared location, so that the team can download it.
+- As a **Maintainer**, I can build a signed `.app` bundle that embeds the local service and publish it as a GitHub release artifact, so that the team can download it.
 - As a **Maintainer**, I can publish a new version that installed apps discover and install automatically, so that I do not walk each user through updating.
 
 ## Business Rules
@@ -100,9 +100,9 @@ Out of scope:
 
 | # | Rule | Rationale |
 |---|------|-----------|
-| BR-19 | The app is distributed as a shared file (shared drive or download link) and checks a published source for newer versions. | Chosen distribution model: shared file plus auto-update; minimal hosting. |
-| BR-20 | When a newer version is available, the app notifies the user and can download and install it, applying the update on next relaunch. | Keeps the team current without manual reinstalls. |
-| BR-21 | Update checks and downloads transmit only version metadata and the app binary — never user meeting data. | Preserves the privacy guarantee even while networked for updates. |
+| BR-19 | The app is distributed as a GitHub release artifact (a packaged `.app`, e.g. zip or `.dmg`, attached to a GitHub Release) and checks the repository's GitHub Releases for newer versions. | Reuses the existing semantic-release publishing pipeline; no separate hosting to maintain. |
+| BR-20 | When a newer GitHub Release is available, the app notifies the user and can download and install its artifact, applying the update on next relaunch. | Keeps the team current without manual reinstalls. |
+| BR-21 | Update checks and downloads transmit only version metadata and the release artifact — never user meeting data. Only the public GitHub Releases API and asset URLs are contacted. | Preserves the privacy guarantee even while networked for updates. |
 | BR-22 | An update failure (offline, download error) leaves the current version fully functional. | Users must never be left with a broken install. |
 | BR-23 | The app is code-signed (self-signed for now) and ships with documented one-time Gatekeeper bypass instructions. | Self-signing chosen over paid notarization; users need a clear path past the warning. |
 | BR-24 | An app update never disturbs user data, which lives outside the app bundle in the service's Application Support location. | Data survives updates because it is not inside the bundle (service BR-12). |
@@ -152,7 +152,7 @@ All meetings, transcripts, configuration, and models are owned and stored by the
 |---|----------|-------|--------|
 | OQ-1 | Minimum supported macOS version for the SwiftUI app? | Product / Engineering | Open |
 | OQ-2 | How does the app discover the service's port and readiness — stdout handshake, a written port file, or a fixed-port fallback? | Engineering | Open — spans this spec and `local-transcription-service.md` (its OQ-2) |
-| OQ-3 | Where is the auto-update feed/binary hosted, and what mechanism performs the update (e.g., Sparkle) given a self-signed build? | Engineering / Product | Open |
+| OQ-3 | Given GitHub Releases as the artifact source (BR-19), what mechanism performs the update on a self-signed build — Sparkle with a GitHub-backed appcast, or a direct GitHub Releases API check-and-download? And are the target repository's releases public or does the app need an access token? | Engineering / Product | Open |
 | OQ-4 | Should the app present a menu-bar presence, a dock icon, or both when running in the background after the window is closed? | Product / Design | Open |
 | OQ-5 | Is a paid Apple Developer account acceptable later to remove Gatekeeper friction entirely (notarization)? | Product | Open — deferred; self-signing chosen for now |
 | OQ-6 | What is the exact feature-parity checklist against the current web UI (e.g., every tab in the transcript viewer, keyboard behaviors, speaker-color scheme)? | Product / Design | Open |
