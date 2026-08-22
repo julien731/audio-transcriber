@@ -79,7 +79,7 @@ struct TranscriptContainerView: View {
                 PlainTextTabView(text: PlainTextRenderer.render(transcript: transcript, speakers: speakers))
             } else { emptyTranscript }
         case .analysis:
-            AnalysisTabView(client: store.client, meetingId: detail.metadata.id, meetingType: detail.metadata.type)
+            AnalysisTabView(client: store.client, detail: detail)
         }
     }
 

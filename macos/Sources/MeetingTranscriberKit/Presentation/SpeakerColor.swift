@@ -49,6 +49,14 @@ public enum SpeakerColor {
         return speakerId
     }
 
+    /// Count of distinct speakers still unnamed (mirrors utils.js
+    /// `getUnnamedSpeakersInfo`) — used to warn before generating an analysis.
+    public static func unnamedSpeakers(in segments: [TranscriptSegment], speakers: [String: String]) -> (unnamed: Int, total: Int) {
+        let ids = orderedSpeakerIds(in: segments)
+        let unnamed = ids.filter { isUnidentified(speakers[$0] ?? $0) }.count
+        return (unnamed, ids.count)
+    }
+
     private static func matchesSpeakerLabel(_ name: String) -> Bool {
         guard name.hasPrefix("SPEAKER_") else { return false }
         let suffix = name.dropFirst("SPEAKER_".count)

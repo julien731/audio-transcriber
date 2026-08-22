@@ -137,13 +137,3 @@ struct MeetingEditView: View {
     }
 }
 
-/// Analysis tab — filled in slice 9 (assembled prompt).
-struct AnalysisTabView: View {
-    let client: APIClient
-    let meetingId: String
-    let meetingType: MeetingType
-    var body: some View {
-        Text("Analysis arrives in slice 9.").foregroundStyle(.secondary)
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-    }
-}

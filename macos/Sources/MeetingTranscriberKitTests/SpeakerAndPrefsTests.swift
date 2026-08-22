@@ -33,6 +33,15 @@ func runSpeakerColorTests() {
         expect(!SpeakerColor.isUnidentified("SPEAKER_1A"), "non-numeric suffix not the pattern")
     }
 
+    suite("SpeakerColor.unnamedSpeakers") {
+        let segments = [segment("s1", "SPEAKER_00"), segment("s2", "SPEAKER_01"), segment("s3", "SPEAKER_00")]
+        let info = SpeakerColor.unnamedSpeakers(in: segments, speakers: ["SPEAKER_00": "Alice"])
+        expectEqual(info.total, 2, "two distinct speakers")
+        expectEqual(info.unnamed, 1, "SPEAKER_01 still unnamed")
+        let allNamed = SpeakerColor.unnamedSpeakers(in: segments, speakers: ["SPEAKER_00": "Alice", "SPEAKER_01": "Bob"])
+        expectEqual(allNamed.unnamed, 0, "all named → zero")
+    }
+
     suite("SpeakerColor.displayName") {
         expectEqual(SpeakerColor.displayName(for: "SPEAKER_00", speakers: ["SPEAKER_00": "Alice"]), "Alice", "mapped name")
         expectEqual(SpeakerColor.displayName(for: "SPEAKER_00", speakers: [:]), "SPEAKER_00", "fallback to id")
