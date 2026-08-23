@@ -73,4 +73,4 @@ Panel rows only jump; the existing `speakerMenu` rename path is untouched.
 
 ## Deviations from Plan
 
-_Populated after implementation._
+- Added a 4th commit adopting an architect code-review nit: the floating toggle's label/tooltip is "Jump to speaker" (not "Speakers") with an `accessibilityLabel`, to disambiguate it from the existing header "Speakers" bulk-rename button. No behavior change.
