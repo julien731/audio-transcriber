@@ -2,40 +2,33 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-	<key>CFBundleName</key>
-	<string>Meeting Transcriber</string>
 	<key>CFBundleDisplayName</key>
 	<string>Meeting Transcriber</string>
-	<key>CFBundleIdentifier</key>
-	<string>co.nimblehq.MeetingTranscriber</string>
 	<key>CFBundleExecutable</key>
 	<string>MeetingTranscriber</string>
+	<key>CFBundleIdentifier</key>
+	<string>co.nimblehq.MeetingTranscriber</string>
+	<key>CFBundleName</key>
+	<string>Meeting Transcriber</string>
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
-	<!-- Overwritten from the release tag by release-macos.yml (plan TD-5). -->
 	<key>CFBundleShortVersionString</key>
 	<string>0.0.0</string>
 	<key>CFBundleVersion</key>
 	<string>0</string>
+	<key>LSApplicationCategoryType</key>
+	<string>public.app-category.productivity</string>
 	<key>LSMinimumSystemVersion</key>
 	<string>13.0</string>
-	<!-- Focus the existing instance instead of starting a second embedded
-	     service against the same data (EC-9). -->
 	<key>LSMultipleInstancesProhibited</key>
 	<true/>
 	<key>NSHighResolutionCapable</key>
 	<true/>
-	<key>LSApplicationCategoryType</key>
-	<string>public.app-category.productivity</string>
-	<!-- Sparkle auto-update (plan Artifact C). The feed lives at the stable
-	     "latest" release asset; enclosures are EdDSA-signed (not the feed). The
-	     public key below is a PLACEHOLDER — release-macos.yml injects the real
-	     SUPublicEDKey whose private half is a GitHub Actions secret. -->
+	<key>SUEnableAutomaticChecks</key>
+	<true/>
 	<key>SUFeedURL</key>
 	<string>https://github.com/nimblehq/audio-transcriber/releases/latest/download/appcast.xml</string>
 	<key>SUPublicEDKey</key>
-	<string>REPLACE_WITH_SPARKLE_ED_PUBLIC_KEY</string>
-	<key>SUEnableAutomaticChecks</key>
-	<true/>
+	<string>nnJTHHBjllQCHtia3MGE2x0TuzsIkDMS7AVM6bFNx7c=</string>
 </dict>
 </plist>

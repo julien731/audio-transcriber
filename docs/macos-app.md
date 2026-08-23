@@ -117,7 +117,38 @@ supported, reversible one.)
 ### Required CI secrets
 
 - `SPARKLE_ED_PRIVATE_KEY` / `SPARKLE_ED_PUBLIC_KEY` — the EdDSA key pair
-  (`generate_keys` from Sparkle). Public half is injected into `SUPublicEDKey`.
+  (`generate_keys` from Sparkle). Public half is committed as `SUPublicEDKey` in
+  `Info.plist` and set as the public secret; CI also injects it at build time.
+
+### Generating the Sparkle signing key (one-time)
+
+The private key signs every release's appcast and cannot be rotated without
+breaking auto-update for already-installed apps (the public key is baked into
+each shipped `Info.plist`). Generate once, back it up durably, and guard it.
+
+```bash
+cd macos
+BIN=.build/artifacts/sparkle/Sparkle/bin      # populated by `swift build`
+
+# 1. Generate (private key → login Keychain; prints the public key).
+"$BIN/generate_keys"                          # re-print later with: "$BIN/generate_keys" -p
+
+# 2. Export the private key for the CI secret + a durable backup.
+"$BIN/generate_keys" -x /tmp/sparkle_private_key.txt
+
+# 3. Set the two GitHub Actions secrets.
+gh secret set SPARKLE_ED_PRIVATE_KEY --repo <owner>/<repo> < /tmp/sparkle_private_key.txt
+gh secret set SPARKLE_ED_PUBLIC_KEY  --repo <owner>/<repo> --body '<public-key>'
+
+# 4. Back up the private key to a secrets manager, then securely delete the file.
+rm -P /tmp/sparkle_private_key.txt
+
+# 5. Commit the public key into Info.plist (safe — it is public):
+/usr/libexec/PlistBuddy -c "Set :SUPublicEDKey <public-key>" Resources/Info.plist
+```
+
+**Losing the private key = you can no longer ship auto-updates to existing
+installs.** Keep it in a secrets manager, not only the Keychain.
 
 ## Milestone D0 — real-service packaging (maintainer, arm64 + full Xcode)
 
