@@ -15,7 +15,7 @@ struct UploadView: View {
     @State private var title = ""
     @State private var meetingType: MeetingType = .other
     @State private var selectedLanguages: Set<String> = []
-    @State private var numSpeakers = "auto"
+    @State private var numSpeakers: Int?
     @State private var preprocess = true
     @State private var audioAnalysis = false
     @State private var context = ""
@@ -42,7 +42,12 @@ struct UploadView: View {
                     Picker("Type", selection: $meetingType) {
                         ForEach(MeetingType.allCases, id: \.self) { Text($0.displayName).tag($0) }
                     }
-                    TextField("Speakers (number or “auto”)", text: $numSpeakers)
+                    Picker("Speakers", selection: $numSpeakers) {
+                        Text("Auto").tag(Int?.none)
+                        ForEach(1...10, id: \.self) { count in
+                            Text("\(count)").tag(Int?.some(count))
+                        }
+                    }
                     Toggle("Preprocess audio", isOn: $preprocess)
                     Toggle("Run audio analysis (emotion, prosody, interactions)", isOn: $audioAnalysis)
                 }
@@ -148,7 +153,7 @@ struct UploadView: View {
             title: title,
             meetingType: meetingType,
             expectedLanguages: Languages.all.map(\.code).filter { selectedLanguages.contains($0) },
-            numSpeakers: Int(numSpeakers.trimmingCharacters(in: .whitespaces)),
+            numSpeakers: numSpeakers,
             preprocessAudio: preprocess,
             audioAnalysisEnabled: audioAnalysis,
             context: context
