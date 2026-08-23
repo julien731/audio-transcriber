@@ -104,15 +104,26 @@ Whisper-only). Setup shows only until provisioning completes (BR-14).
 
 ## Gatekeeper: one-time bypass (self-signed build, BR-23, EC-1)
 
-The app is self-signed (not notarized), so first launch shows an "unidentified
-developer" warning. It is **not** permanently blocked:
+The app is self-signed (not notarized), so a downloaded copy is blocked on first
+launch: *"Blah" Not Opened — Apple could not verify … is free of malware* with
+only **Move to Trash** / **Done**. It is **not** permanently blocked.
 
-1. In Finder, **right-click** (or Control-click) `Blah.app` → **Open**.
-2. In the dialog, click **Open** again.
+On **macOS 15 (Sequoia) and later** (incl. macOS 26), Apple removed the old
+Control-click → Open bypass; approve it in Settings instead:
 
-macOS remembers the choice; subsequent launches are normal double-click. (Do not
-`xattr -d` the quarantine attribute — the right-click → Open path is the
-supported, reversible one.)
+1. Click **Done** (not "Move to Trash").
+2. Open **System Settings → Privacy & Security**.
+3. Under **Security**, find *""Blah" was blocked to protect your Mac"* and click
+   **Open Anyway**; authenticate (Touch ID / password).
+4. Confirm **Open** on the final prompt.
+
+macOS remembers the choice; subsequent launches are a normal double-click. (On
+macOS 13–14 the older **right-click → Open → Open** flow still works.)
+
+> The real fix for this friction is **Apple notarization** (a paid Developer
+> account), deferred by BR-23 in favor of self-signing. Until then, each user does
+> the one-time Open-Anyway step above. `xattr -dr com.apple.quarantine Blah.app`
+> also works but is a blunter, less transparent bypass.
 
 ## Auto-update (Sparkle) & release publishing
 
@@ -123,7 +134,7 @@ supported, reversible one.)
   (BR-22). Only the public GitHub Releases API + asset URLs are contacted (BR-21).
 - Publishing runs in the **same** `release.yml` run (a tag-triggered workflow
   would not fire under the `GITHUB_TOKEN` recursion guard): the `build-macos` job
-  (macos-14, gated on a release having published) fetches the pinned service
+  (macos-15, gated on a release having published) fetches the pinned service
   artifact, assembles + signs the `.app`, produces the signed enclosure, updates
   the appcast, uploads to the release, then flips the **draft** to published.
 - User data lives in Application Support, outside the bundle, so updates never
@@ -221,7 +232,7 @@ does not match the published asset, `release-macos.yml` fails (by design).
    signs the `.app`, signs the enclosure, updates `appcast.xml`, runs the
    pre-publish gate, uploads the zip + appcast, and flips the draft to published.
 4. **Post-publish (manual):** on a clean Mac, download the `.app`, confirm the
-   one-time right-click → Open (Gatekeeper), and — from the prior release —
+   one-time Settings → Open Anyway (Gatekeeper, macOS 15+), and — from the prior release —
    confirm Sparkle auto-updates to the new version.
 
 ### Recovery
@@ -231,7 +242,7 @@ published version). Re-run the failed job (preserves the version), or re-invoke
 
 ## Manual acceptance checklist
 
-- [ ] First launch: right-click → Open past Gatekeeper (EC-1).
+- [ ] First launch: Settings → Privacy & Security → Open Anyway past Gatekeeper (EC-1).
 - [ ] Setup wizard: enter a token → models download → main UI; and: skip / bad
       token → generic failure → Continue without diarization completes (BR-13).
 - [ ] Upload a recording → progress → transcript appears automatically (BR-9).
