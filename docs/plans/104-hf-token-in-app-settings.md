@@ -57,4 +57,5 @@ Field starts empty and is never populated from the backend; Save/Clear disabled 
 
 ## Deviations from Plan
 
-_Populated after implementation._
+- `SettingsTokenModel.settingsPhase(from:editing:)` is `public` (not internal) so the separate test module can unit-test the mapping directly. No behavior change.
+- On a failed save, "Try again" re-sends the token via `save()` (setToken + startModelDownload) rather than a download-only retry. Functionally equivalent and slightly more robust (token is re-persisted); accepted by architect review as a Nit.
