@@ -159,7 +159,7 @@ private struct WaveformScrubber: View {
     let progress: Double
     let onScrub: (Double) -> Void
 
-    private let bars: [CGFloat] = WaveformScrubber.makeBars(count: 60)
+    private let bars: [CGFloat] = WaveformScrubber.makeBars(count: 100)
 
     var body: some View {
         GeometryReader { geo in
@@ -167,7 +167,7 @@ private struct WaveformScrubber: View {
                 ForEach(bars.indices, id: \.self) { index in
                     Capsule()
                         .fill(isPlayed(index) ? Color.accentColor : Color.primary.opacity(0.22))
-                        .frame(width: 4, height: max(5, geo.size.height * bars[index]))
+                        .frame(width: 2, height: max(3, geo.size.height * bars[index]))
                         .frame(maxWidth: .infinity)
                 }
             }
@@ -185,17 +185,19 @@ private struct WaveformScrubber: View {
         Double(index) / Double(bars.count) <= progress
     }
 
-    /// Deterministic bar heights (0.18...1) shaped to read like a waveform. Two
-    /// incommensurate hash terms keep it aperiodic (no visibly repeating pattern),
-    /// stable across renders and independent of the actual (here silent) samples.
+    /// Deterministic bar heights (0.16...1) that read like a real voice-memo
+    /// waveform. Uses a splitmix64 PRNG per index for genuine, non-repeating
+    /// randomness — stable across renders and independent of the actual (here
+    /// silent) audio samples.
     static func makeBars(count: Int) -> [CGFloat] {
-        func hash(_ n: Double) -> Double {
-            abs(sin(n * 12.9898 + 78.233) * 43758.5453).truncatingRemainder(dividingBy: 1)
+        func random(_ index: Int) -> Double {
+            var z = UInt64(index) &+ 0x9E37_79B9_7F4A_7C15
+            z = (z ^ (z >> 30)) &* 0xBF58_476D_1CE4_E5B9
+            z = (z ^ (z >> 27)) &* 0x94D0_49BB_1331_11EB
+            z ^= z >> 31
+            return Double(z >> 11) * (1.0 / 9_007_199_254_740_992.0)
         }
-        return (0..<count).map { i in
-            let x = Double(i)
-            let value = 0.18 + 0.82 * (0.6 * hash(x) + 0.4 * hash(x * 2.317 + 4.1))
-            return CGFloat(min(1, max(0.18, value)))
-        }
+        let floor = 0.16
+        return (0..<count).map { CGFloat(floor + (1 - floor) * random($0)) }
     }
 }
