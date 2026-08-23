@@ -1,0 +1,8 @@
+{
+  "service_version": "service-1.0.0",
+  "source_commit": "8fd8b5d6957da0308d0c12f737d53f71a1744421",
+  "architecture": "arm64",
+  "sha256": "9fae375cee086d170ccd939f6275d8953a4b96f487348bda1fc02a53af3ab35c",
+  "compressed_size_bytes": 364420687,
+  "installed_size_bytes": 1002086400
+}
