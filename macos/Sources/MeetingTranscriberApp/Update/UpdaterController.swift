@@ -6,7 +6,17 @@ import Sparkle
 /// "don't update mid-transcription"). Updated by the meeting list on each load.
 final class BusyState {
     static let shared = BusyState()
-    var active = false
+    private(set) var active = false
+    /// Fired on a busy→idle transition (all transcriptions settled) so a deferred
+    /// update can be applied. Registered by UpdaterController.
+    var onBecameIdle: (() -> Void)?
+
+    /// Update the busy flag and notify on the busy→idle edge.
+    func set(active newValue: Bool) {
+        let wasActive = active
+        active = newValue
+        if wasActive && !newValue { onBecameIdle?() }
+    }
 }
 
 /// Wraps Sparkle's standard updater (plan Artifact C / slice 10). The feed URL and
@@ -26,6 +36,10 @@ final class UpdaterController: NSObject, SPUUpdaterDelegate {
 
     override init() {
         super.init()
+        // Resume a deferred install once transcriptions settle (busy→idle edge).
+        BusyState.shared.onBecameIdle = { [weak self] in
+            DispatchQueue.main.async { self?.applyPendingInstallIfIdle() }
+        }
         guard Self.hasValidPublicKey else {
             NSLog("Sparkle: SUPublicEDKey not configured; auto-update disabled for this build.")
             return

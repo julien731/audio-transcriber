@@ -24,8 +24,12 @@ mkdir -p "${WORKDIR}/archives"
 cp "${ZIP_PATH}" "${WORKDIR}/archives/"
 
 # Generate an appcast for JUST the new archive (Sparkle fills all required fields
-# and signs the enclosure with the EdDSA key it finds via SPARKLE_ED_PRIVATE_KEY).
-"${SPARKLE_BIN}/generate_appcast" \
+# and signs the enclosure with the EdDSA key). Sparkle 2.9.6 does NOT read the key
+# from an env var — pass it explicitly on stdin via `--ed-key-file -`, otherwise
+# generate_appcast searches the (empty) CI Keychain and fails.
+: "${SPARKLE_ED_PRIVATE_KEY:?SPARKLE_ED_PRIVATE_KEY required to sign the appcast}"
+printf '%s' "${SPARKLE_ED_PRIVATE_KEY}" | "${SPARKLE_BIN}/generate_appcast" \
+  --ed-key-file - \
   --no-delta \
   --download-url-prefix "$(dirname "${ENCLOSURE_URL}")/" \
   --minimum-system-version "${MIN_SYSTEM_VERSION:-13.0}" \

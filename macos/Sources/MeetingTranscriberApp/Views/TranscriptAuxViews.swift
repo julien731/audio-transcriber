@@ -136,4 +136,3 @@ struct MeetingEditView: View {
         }
     }
 }
-
