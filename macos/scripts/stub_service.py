@@ -58,11 +58,14 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self) -> None:  # noqa: N802
         if self.path == "/api/health":
             with _lock:
-                self._send(200, {
-                    "status": "ready",
-                    "provisioning_completed": _state["provisioning_completed"],
-                    "diarization_available": _state["diarization_available"],
-                })
+                self._send(
+                    200,
+                    {
+                        "status": "ready",
+                        "provisioning_completed": _state["provisioning_completed"],
+                        "diarization_available": _state["diarization_available"],
+                    },
+                )
         elif self.path == "/api/provisioning":
             with _lock:
                 self._send(200, dict(_state))
