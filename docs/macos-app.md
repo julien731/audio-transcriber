@@ -155,22 +155,64 @@ installs.** Keep it in a secrets manager, not only the Keychain.
 Runs before shipping; not reproducible in the CLT-only dev env or cheaply in CI.
 
 1. Build the real self-contained service: `./scripts/vendor_ffmpeg.sh && pyinstaller MeetingTranscriber.spec` (see `docs/packaging.md`).
-2. Produce `macos/service-manifest.json`: compressed + installed size, service
-   source commit SHA, `arm64`, `service_version` (= service release tag),
-   SHA-256, PyInstaller + Python toolchain versions, smoke result.
+2. Package + pin it with **`macos/scripts/package_service.sh`** (see "Cutting a
+   release" below) — produces the release zip (with an embedded manifest) and the
+   committed `macos/service-manifest.json` (sha256, `service_version`, source
+   commit, arch, sizes).
 3. Embed the real service under `Contents/Resources/service/`, assemble the
    `.app`, and smoke-test: `/api/health`, `POST /provisioning/token` (empty),
    `POST /provisioning/models` (Whisper-only) to completion, and one clean-machine
-   transcription.
-4. **Measure the final app zip.** ≤ 2 GB → single GitHub enclosure. > 2 GB →
-   shrink the bundle first; only if that fails, external enclosure hosting with
-   product approval + a documented BR-21 deviation.
-5. Generate the Sparkle EdDSA keys; store the private key as a CI secret; set
-   `SUPublicEDKey`.
-6. Run the **v1→v2 update smoke** (`scripts/verify_update.sh`): serve the merged
-   appcast + v2 zip from a localhost fixture (draft assets aren't reachable
-   unauthenticated), a test build differing only in `SUFeedURL`, and confirm
-   Sparkle installs v2 over v1.
+   transcription. (Validated in this session on a short speech clip → `ready`.)
+4. **Measure the final app zip** (`release-macos.yml` does this automatically and
+   fails > 2 GB). ≤ 2 GB → single GitHub enclosure. > 2 GB → shrink the bundle
+   first; only if that fails, external enclosure hosting with product approval +
+   a documented BR-21 deviation.
+5. Generate the Sparkle EdDSA keys and set the secrets (see "Generating the
+   Sparkle signing key" above).
+6. **Pre-publish gate** (`scripts/verify_update.sh`, run by `release-macos.yml`):
+   headless checks that the appcast parses with a signed enclosure, the enclosure
+   length matches the zip, the `.app` passes `codesign --verify --deep --strict`,
+   and `SUPublicEDKey` is a real key — fails the release before publishing on any
+   miss. The full GUI v1→v2 Sparkle install remains a **manual** check on the
+   published release (download v(N-1), let it update to v(N)).
+
+## Cutting a release (runbook)
+
+The app version is computed by `semantic-release` from merged-PR labels (see
+`CLAUDE.md`); the service is pinned independently via `service-manifest.json`.
+
+### One-time setup
+1. Generate the Sparkle keys + set `SPARKLE_ED_PRIVATE_KEY` / `SPARKLE_ED_PUBLIC_KEY`
+   secrets, and commit `SUPublicEDKey` in `Info.plist` (see above).
+
+### Publish/pin the service artifact (Decision B) — whenever the service changes
+On an arm64 machine with the venv + `pyinstaller` (see `docs/packaging.md`):
+```bash
+./scripts/vendor_ffmpeg.sh && pyinstaller MeetingTranscriber.spec   # build dist/MeetingTranscriber
+VERSION=service-vX.Y.Z bash macos/scripts/package_service.sh        # -> zip + manifests
+gh release create service-vX.Y.Z macos/build/MeetingTranscriberService-service-vX.Y.Z.zip \
+  --repo <owner>/<repo> --title "Bundled service service-vX.Y.Z" \
+  --notes "Self-contained arm64 service."
+git add macos/service-manifest.json && git commit -m "chore: pin service service-vX.Y.Z"
+```
+`macos/service-manifest.json` is the CI's pinned expectation. If it is absent or
+does not match the published asset, `release-macos.yml` fails (by design).
+
+### Ship an app release
+2. Open a PR to `main` with a release-triggering label (`feature`/`bug`/`breaking`;
+   see `CLAUDE.md`). Merge (squash).
+3. `release.yml` runs `semantic-release` → creates a **draft** release, then the
+   `build-macos` job (same run) fetches+verifies the pinned service, assembles +
+   signs the `.app`, signs the enclosure, updates `appcast.xml`, runs the
+   pre-publish gate, uploads the zip + appcast, and flips the draft to published.
+4. **Post-publish (manual):** on a clean Mac, download the `.app`, confirm the
+   one-time right-click → Open (Gatekeeper), and — from the prior release —
+   confirm Sparkle auto-updates to the new version.
+
+### Recovery
+A failed `build-macos` job leaves the release a **draft** (never a broken
+published version). Re-run the failed job (preserves the version), or re-invoke
+`release-macos.yml` via `workflow_dispatch` with the tag.
 
 ## Manual acceptance checklist
 

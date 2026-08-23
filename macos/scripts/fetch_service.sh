@@ -40,7 +40,7 @@ assert m["service_version"]==sys.argv[3], f"version mismatch: {m['service_versio
 assert m["architecture"]=="arm64", f"arch not arm64: {m['architecture']}"
 print("service manifest verified")
 PY
-for bin in MeetingTranscriber bin/ffmpeg bin/ffprobe; do
+for bin in MeetingTranscriber _internal/bin/ffmpeg _internal/bin/ffprobe; do
   f="${DEST}/unpacked/${bin}"
   [ -e "${f}" ] && file "${f}" | grep -q arm64 || { echo "::error::${bin} is not arm64"; exit 1; }
 done
