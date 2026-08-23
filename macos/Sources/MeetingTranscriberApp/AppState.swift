@@ -15,6 +15,14 @@ final class AppState: ObservableObject {
 
     @Published private(set) var phase: Phase = .starting
 
+    /// The live service client, available only once the app is `.ready` (BR-2).
+    /// The Settings screen uses this to gate the token form; `.setup` deliberately
+    /// does not qualify — the setup wizard owns the token during first run.
+    var client: APIClient? {
+        if case let .ready(client) = phase { return client }
+        return nil
+    }
+
     private var supervisor = ServiceSupervisor()
     private let nonce = UUID().uuidString
     /// Bumped on every start()/restart(). An in-flight launch only mutates state
