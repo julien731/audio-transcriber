@@ -30,7 +30,11 @@ permissions:
 
 jobs:
   build-macos:
-    runs-on: macos-15
+    # macos-26 so the app links against the macOS 26 (Tahoe) SDK and adopts the
+    # new system appearance (Liquid Glass) in the shipped build. The linked SDK —
+    # not the deployment target — decides which appearance the binary opts into,
+    # so building on macos-15 kept the pre-Tahoe chrome even on macOS 26.
+    runs-on: macos-26
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -40,16 +44,23 @@ jobs:
       - name: Select Xcode (Swift 6+)
         run: |
           # Package.swift is swift-tools-version 6.0; the runner's default Xcode
-          # can be Swift 5.10. Pick the newest Xcode 16+ and verify Swift ≥ 6.
-          XC=$(ls -d /Applications/Xcode_1[6-9]*.app 2>/dev/null | sort -V | tail -1)
+          # can be older. Pick the newest Xcode on the runner and verify Swift ≥ 6.
+          # (Glob is version-agnostic so it keeps matching Xcode 26+ on macos-26;
+          # the earlier Xcode_1[6-9]* glob missed Xcode 26 entirely.)
+          XC=$(ls -d /Applications/Xcode_*.app 2>/dev/null | sort -V | tail -1)
           if [ -z "${XC}" ]; then
-            echo "::error::No Xcode 16+ (Swift 6) found on the runner."
+            echo "::error::No Xcode found on the runner."
             ls -d /Applications/Xcode*.app || true
             exit 1
           fi
           echo "Using ${XC}"
           sudo xcode-select -s "${XC}"
           swift --version
+          SWIFT_MAJOR=$(swift -version 2>&1 | sed -n 's/.*Swift version \([0-9]*\).*/\1/p' | head -1)
+          if [ -z "${SWIFT_MAJOR}" ] || [ "${SWIFT_MAJOR}" -lt 6 ]; then
+            echo "::error::Selected Xcode (${XC}) has Swift < 6; Package.swift needs Swift 6."
+            exit 1
+          fi
 
       # Decision B: fetch the pinned, checksummed self-contained service artifact
       # (built once per service version on an arm64 machine) and verify its
