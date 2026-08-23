@@ -15,7 +15,7 @@ struct UploadView: View {
     @State private var title = ""
     @State private var meetingType: MeetingType = .other
     @State private var selectedLanguages: Set<String> = []
-    @State private var numSpeakers = "auto"
+    @State private var numSpeakers: Int?
     @State private var preprocess = true
     @State private var audioAnalysis = false
     @State private var context = ""
@@ -23,18 +23,16 @@ struct UploadView: View {
     @State private var validationError: String?
     @State private var submitting = false
     @State private var importing = false
+    @State private var isDropTargeted = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             Text("New Meeting").font(.title2.weight(.semibold)).padding([.top, .horizontal], 20)
             Form {
                 Section {
-                    HStack {
-                        Button("Choose Audio File…") { importing = true }
-                        if let fileURL {
-                            Text(fileURL.lastPathComponent).lineLimit(1).foregroundStyle(.secondary)
-                        }
-                    }
+                    dropZone
+                        .listRowInsets(EdgeInsets())
+                        .listRowBackground(Color.clear)
                     if let validationError {
                         Text(validationError).font(.caption).foregroundStyle(.red)
                     }
@@ -44,7 +42,12 @@ struct UploadView: View {
                     Picker("Type", selection: $meetingType) {
                         ForEach(MeetingType.allCases, id: \.self) { Text($0.displayName).tag($0) }
                     }
-                    TextField("Speakers (number or “auto”)", text: $numSpeakers)
+                    Picker("Speakers", selection: $numSpeakers) {
+                        Text("Auto").tag(Int?.none)
+                        ForEach(1...10, id: \.self) { count in
+                            Text("\(count)").tag(Int?.some(count))
+                        }
+                    }
                     Toggle("Preprocess audio", isOn: $preprocess)
                     Toggle("Run audio analysis (emotion, prosody, interactions)", isOn: $audioAnalysis)
                 }
@@ -74,8 +77,54 @@ struct UploadView: View {
         }
     }
 
+    /// Drag-and-drop target that mirrors the "Choose Audio File…" picker. Dropping a
+    /// file runs the same validation as the importer, so both paths share `accept(url:)`.
+    private var dropZone: some View {
+        VStack(spacing: 8) {
+            Image(systemName: fileURL == nil ? "waveform" : "checkmark.circle.fill")
+                .font(.system(size: 28))
+                .foregroundStyle(fileURL == nil ? (isDropTargeted ? Color.accentColor : .secondary) : .green)
+            if let fileURL {
+                Text(fileURL.lastPathComponent)
+                    .lineLimit(1).truncationMode(.middle)
+                Button("Choose a different file…") { importing = true }
+                    .buttonStyle(.link)
+            } else {
+                Text("Drag & drop an audio file here").font(.callout)
+                Text("or").font(.caption).foregroundStyle(.secondary)
+                Button("Choose Audio File…") { importing = true }
+                Text("mp3, mp4, m4a, wav, webm").font(.caption2).foregroundStyle(.tertiary)
+            }
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 24)
+        .background(
+            RoundedRectangle(cornerRadius: 10)
+                .fill(isDropTargeted ? Color.accentColor.opacity(0.08) : Color.clear)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 10)
+                .strokeBorder(
+                    isDropTargeted ? Color.accentColor : Color.secondary.opacity(0.35),
+                    style: StrokeStyle(lineWidth: 1.5, dash: [6, 4])
+                )
+        )
+        .animation(.easeInOut(duration: 0.15), value: isDropTargeted)
+        .dropDestination(for: URL.self) { urls, _ in
+            guard let url = urls.first, url.isFileURL else { return false }
+            accept(url: url)
+            return true
+        } isTargeted: { isDropTargeted = $0 }
+    }
+
     private func handleImport(_ result: Result<[URL], Error>) {
         guard case let .success(urls) = result, let url = urls.first else { return }
+        accept(url: url)
+    }
+
+    /// Validates a picked or dropped file and updates form state. Reads the file size
+    /// without security-scoped access, which is safe because the app is not sandboxed.
+    private func accept(url: URL) {
         let byteCount = (try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0
         if let failure = UploadValidation.validate(filename: url.lastPathComponent, byteCount: byteCount) {
             validationError = failure.message
@@ -104,7 +153,7 @@ struct UploadView: View {
             title: title,
             meetingType: meetingType,
             expectedLanguages: Languages.all.map(\.code).filter { selectedLanguages.contains($0) },
-            numSpeakers: Int(numSpeakers.trimmingCharacters(in: .whitespaces)),
+            numSpeakers: numSpeakers,
             preprocessAudio: preprocess,
             audioAnalysisEnabled: audioAnalysis,
             context: context
