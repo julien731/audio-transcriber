@@ -17,21 +17,39 @@ on:
       version:
         required: true
         type: string
+  # Recovery path (plan Artifact C): re-run for an existing draft by tag if the
+  # same-run build-macos failed after semantic-release already created the tag.
+  workflow_dispatch:
+    inputs:
+      version:
+        required: true
+        type: string
 
 permissions:
   contents: write
 
 jobs:
   build-macos:
-    runs-on: macos-14
+    runs-on: macos-15
     steps:
       - name: Checkout
         uses: actions/checkout@v6
         with:
           persist-credentials: false
 
-      - name: Select Xcode
-        run: sudo xcode-select -s /Applications/Xcode.app
+      - name: Select Xcode (Swift 6+)
+        run: |
+          # Package.swift is swift-tools-version 6.0; the runner's default Xcode
+          # can be Swift 5.10. Pick the newest Xcode 16+ and verify Swift ≥ 6.
+          XC=$(ls -d /Applications/Xcode_1[6-9]*.app 2>/dev/null | sort -V | tail -1)
+          if [ -z "${XC}" ]; then
+            echo "::error::No Xcode 16+ (Swift 6) found on the runner."
+            ls -d /Applications/Xcode*.app || true
+            exit 1
+          fi
+          echo "Using ${XC}"
+          sudo xcode-select -s "${XC}"
+          swift --version
 
       # Decision B: fetch the pinned, checksummed self-contained service artifact
       # (built once per service version on an arm64 machine) and verify its
