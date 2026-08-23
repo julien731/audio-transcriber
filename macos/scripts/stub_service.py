@@ -16,6 +16,7 @@ from __future__ import annotations
 import json
 import os
 import signal
+import socketserver
 import threading
 import time
 from http.server import BaseHTTPRequestHandler, HTTPServer
@@ -95,6 +96,22 @@ class Handler(BaseHTTPRequestHandler):
         return
 
 
+class _StubServer(HTTPServer):
+    """HTTPServer that skips the reverse-DNS lookup in the default server_bind.
+
+    http.server.HTTPServer.server_bind() calls socket.getfqdn(host), which does
+    a reverse-DNS resolution. On CI runners with slow or absent reverse DNS this
+    blocks for ~20s during construction — delaying the stdout readiness handshake
+    past the supervisor's timeout and failing the integration suite. We don't use
+    server_name, so bind the socket and set it to the bound host directly.
+    """
+
+    def server_bind(self) -> None:
+        socketserver.TCPServer.server_bind(self)
+        self.server_name = self.server_address[0]
+        self.server_port = self.server_address[1]
+
+
 def app_support_dir() -> str:
     base = os.path.expanduser("~/Library/Application Support/MeetingTranscriber")
     os.makedirs(base, exist_ok=True)
@@ -102,7 +119,7 @@ def app_support_dir() -> str:
 
 
 def main() -> None:
-    httpd = HTTPServer(("127.0.0.1", 0), Handler)
+    httpd = _StubServer(("127.0.0.1", 0), Handler)
     port = httpd.server_address[1]
 
     print(json.dumps({"event": "ready", "port": port, "nonce": NONCE}), flush=True)
