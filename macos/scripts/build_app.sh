@@ -26,13 +26,21 @@ mkdir -p "${CONTENTS}/MacOS" "${CONTENTS}/Resources/service" "${FRAMEWORKS}"
 cp "${BIN_PATH}/MeetingTranscriberApp" "${CONTENTS}/MacOS/MeetingTranscriber"
 cp "${ROOT}/Resources/Info.plist" "${CONTENTS}/Info.plist"
 
+# STRICT mode (release builds): missing real service and any signing failure are
+# fatal, and the finished bundle is verified. Set STRICT=1 in release-macos.yml.
+STRICT="${STRICT:-0}"
+
 # Embed the service: the real self-contained PyInstaller bundle if available
-# (D0), else the dev stub (D1). SERVICE_DIST defaults to ../dist/MeetingTranscriber
-# (pyinstaller output). The app's AppState prefers the real executable.
+# (D0/release), else the dev stub (D1). SERVICE_DIST defaults to
+# ../dist/MeetingTranscriber (local pyinstaller output); release-macos.yml sets it
+# to the fetched+verified artifact.
 SERVICE_DIST="${SERVICE_DIST:-${ROOT}/../dist/MeetingTranscriber}"
 if [ -d "${SERVICE_DIST}" ]; then
   echo "==> embedding real service from ${SERVICE_DIST}"
   cp -R "${SERVICE_DIST}" "${CONTENTS}/Resources/service/MeetingTranscriber"
+elif [ "${STRICT}" = "1" ]; then
+  echo "::error::real service bundle not found at ${SERVICE_DIST}; refusing to ship the dev stub in a release build." >&2
+  exit 1
 else
   echo "==> embedding dev stub service (no real bundle at ${SERVICE_DIST})"
   cp "${ROOT}/scripts/stub_service.py" "${CONTENTS}/Resources/service/stub_service.py"
@@ -48,17 +56,23 @@ ENTITLEMENTS="${ROOT}/Resources/MeetingTranscriber.entitlements"
 
 sign() { codesign --force --options runtime --timestamp=none --sign "${SIGN_IDENTITY}" "$@"; }
 
+# In STRICT mode xargs propagates codesign failures (exit non-zero on any error);
+# in dev mode failures are tolerated (some envs lack a usable signing context).
+if [ "${STRICT}" = "1" ]; then
+  SIGN_MANY() { xargs -0 -P8 -n1 codesign --force --sign "${SIGN_IDENTITY}"; }
+else
+  SIGN_MANY() { xargs -0 -P8 -n1 codesign --force --sign "${SIGN_IDENTITY}" 2>/dev/null || true; }
+fi
+
 # Sign every mach-o in the embedded service. Unsigned dylibs make macOS validate
 # the whole ML tree on first load, which can take minutes on a cold cache and made
-# the app time out waiting for readiness. Ad-hoc signing makes validation fast and
+# the app time out waiting for readiness. Signing makes validation fast and
 # cacheable. Parallelized — the service ships hundreds of dylibs.
 SERVICE_EMBED="${CONTENTS}/Resources/service"
 if [ -d "${SERVICE_EMBED}" ]; then
-  echo "==> signing embedded service mach-o (ad-hoc)"
-  find "${SERVICE_EMBED}" -type f \( -name "*.so" -o -name "*.dylib" \) -print0 \
-    | xargs -0 -P8 codesign --force --sign "${SIGN_IDENTITY}" 2>/dev/null || true
-  find "${SERVICE_EMBED}" -type f -perm +111 ! -name "*.so" ! -name "*.dylib" -print0 2>/dev/null \
-    | xargs -0 -P8 codesign --force --sign "${SIGN_IDENTITY}" 2>/dev/null || true
+  echo "==> signing embedded service mach-o"
+  find "${SERVICE_EMBED}" -type f \( -name "*.so" -o -name "*.dylib" \) -print0 | SIGN_MANY
+  find "${SERVICE_EMBED}" -type f -perm +111 ! -name "*.so" ! -name "*.dylib" -print0 2>/dev/null | SIGN_MANY
 fi
 
 # Inner→outer signing order for Sparkle (XPC services → helpers → framework → app).
@@ -71,7 +85,14 @@ if [ -d "${FW}" ]; then
 fi
 
 echo "==> codesign app (${SIGN_IDENTITY})"
-codesign --force --sign "${SIGN_IDENTITY}" --entitlements "${ENTITLEMENTS}" "${APP}" \
-  || echo "warning: codesign failed (expected without a signing identity in some envs)"
+if [ "${STRICT}" = "1" ]; then
+  # Release: signing must succeed, and the finished bundle must verify.
+  codesign --force --sign "${SIGN_IDENTITY}" --entitlements "${ENTITLEMENTS}" "${APP}"
+  echo "==> codesign --verify --deep --strict"
+  codesign --verify --deep --strict --verbose=2 "${APP}"
+else
+  codesign --force --sign "${SIGN_IDENTITY}" --entitlements "${ENTITLEMENTS}" "${APP}" \
+    || echo "warning: codesign failed (expected without a signing identity in some envs)"
+fi
 
 echo "==> built ${APP}"

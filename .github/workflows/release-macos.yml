@@ -55,7 +55,13 @@ jobs:
 
       - name: Build + assemble .app (release, embeds real service + Sparkle)
         run: |
-          cd macos && bash scripts/build_app.sh release
+          # STRICT=1 makes a missing real service and any signing failure fatal and
+          # verifies the finished bundle. SERVICE_DIST points at the fetched+verified
+          # PyInstaller artifact (fetch_service.sh extracted it here).
+          cd macos && \
+            SERVICE_DIST="${GITHUB_WORKSPACE}/macos/build/service/unpacked" \
+            STRICT=1 \
+            bash scripts/build_app.sh release
 
       - name: Zip app + measure final enclosure size
         id: zip
@@ -81,21 +87,36 @@ jobs:
           # Download the current appcast (retain prior entries) and produce the merged feed.
           gh release download --pattern appcast.xml --dir macos/build --clobber \
             "$(gh release list --limit 20 --json tagName,isLatest -q '.[]|select(.isLatest)|.tagName')" || true
+          # Sparkle's SPM distribution ships its CLI tools under
+          # macos/.build/artifacts/sparkle/Sparkle/bin (populated by `swift build`
+          # in the build step). Fail loudly if not found rather than silently
+          # producing an empty SPARKLE_BIN.
+          SPARKLE_TOOL="$(find "${GITHUB_WORKSPACE}/macos/.build/artifacts" \
+            ~/Library/Developer/Xcode/DerivedData -name generate_appcast -type f 2>/dev/null | head -1)"
+          if [ -z "${SPARKLE_TOOL}" ]; then
+            echo "::error::generate_appcast not found under macos/.build/artifacts (did swift build run?)."
+            exit 1
+          fi
           VERSION="${{ inputs.version }}" \
           ZIP_PATH="macos/build/MeetingTranscriber-${{ inputs.version }}.zip" \
           ENCLOSURE_URL="https://github.com/${{ github.repository }}/releases/download/${{ inputs.version }}/MeetingTranscriber-${{ inputs.version }}.zip" \
-          SPARKLE_BIN="$(find ~/Library/Developer/Xcode/DerivedData /tmp -name generate_appcast -type f 2>/dev/null | head -1 | xargs dirname)" \
+          SPARKLE_BIN="$(dirname "${SPARKLE_TOOL}")" \
           PREVIOUS_APPCAST="macos/build/appcast.xml" \
           OUT_APPCAST="macos/build/appcast.xml" \
           MIN_SYSTEM_VERSION="13.0" \
           bash macos/scripts/make_appcast.sh
 
-      - name: Verify v1→v2 install (localhost fixture)
+      - name: Verify update artifacts (pre-publish gate)
         run: |
-          # Serves the merged appcast + new zip from a localhost fixture (draft
-          # assets aren't reachable unauthenticated); the test build differs only
-          # in SUFeedURL. Proves Sparkle accepts the new item before publishing.
-          bash macos/scripts/verify_update.sh || { echo "::error::v1→v2 update smoke failed"; exit 1; }
+          # Headless-runnable verification: appcast parses + signed enclosure,
+          # enclosure length matches the zip, the .app passes codesign
+          # --verify --deep --strict, and SUPublicEDKey is a real key. Fails the
+          # release before publishing if any check does not pass. (The full GUI
+          # v1→v2 install remains a documented manual/D0 step.)
+          APPCAST="macos/build/appcast.xml" \
+          ZIP="macos/build/MeetingTranscriber-${{ inputs.version }}.zip" \
+          VERSION="${{ inputs.version }}" \
+          bash macos/scripts/verify_update.sh
 
       - name: Upload artifacts + publish the draft
         env:
