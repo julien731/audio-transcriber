@@ -15,6 +15,7 @@ github_issue_types_supported: false
 stacks:
   - javascript
   - python
+  - swift
 # conventions_source: https://nimblehq.co/compass/development/code-conventions/
 
 # Quality
