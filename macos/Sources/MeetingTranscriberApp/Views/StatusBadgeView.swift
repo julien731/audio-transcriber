@@ -4,24 +4,22 @@ import MeetingTranscriberKit
 /// Renders a `StatusBadge`, mapping the UI-agnostic severity to a color.
 struct StatusBadgeView: View {
     let badge: StatusBadge
-    /// True when the badge sits on a selected List row, whose accent-colored
-    /// highlight flips text to white. The severity-colored badge is unreadable
-    /// there, so invert it to white-on-translucent like the surrounding row text.
-    var isSelected: Bool = false
 
     var body: some View {
         Text(badge.label)
             .font(.caption.weight(.medium))
             .padding(.horizontal, 8)
             .padding(.vertical, 2)
-            .background(fillStyle, in: Capsule())
-            .foregroundStyle(textColor)
-    }
-
-    private var textColor: Color { isSelected ? .white : color }
-
-    private var fillStyle: Color {
-        isSelected ? Color.white.opacity(0.25) : color.opacity(0.15)
+            // A material base keeps the label legible over any row background —
+            // the default list fill, the blue key-window selection, and the gray
+            // inactive-selection highlight alike — with a faint severity tint on
+            // top for colour identity. Avoids guessing the selection state, which
+            // would need macOS 14's backgroundProminence (the app targets 13).
+            .background {
+                Capsule().fill(.regularMaterial)
+                Capsule().fill(color.opacity(0.12))
+            }
+            .foregroundStyle(color)
     }
 
     private var color: Color {
