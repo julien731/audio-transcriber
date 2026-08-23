@@ -83,7 +83,8 @@ struct TranscriptTabView: View {
                 }
         }
         .buttonStyle(.plain)
-        .help("Speakers")
+        .help("Jump to speaker")
+        .accessibilityLabel("Jump to speaker")
         .padding(.trailing, 12).padding(.top, 12)
     }
 
