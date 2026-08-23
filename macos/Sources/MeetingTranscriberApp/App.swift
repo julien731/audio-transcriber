@@ -14,5 +14,10 @@ struct MeetingTranscriberApp: App {
                 Button("Check for Updates…") { appDelegate.updater.checkForUpdates() }
             }
         }
+
+        // Standard macOS Settings window (⌘,) for the HuggingFace token (#104).
+        Settings {
+            SettingsView(appState: appDelegate.appState)
+        }
     }
 }
