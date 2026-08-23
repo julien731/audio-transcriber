@@ -48,6 +48,19 @@ ENTITLEMENTS="${ROOT}/Resources/MeetingTranscriber.entitlements"
 
 sign() { codesign --force --options runtime --timestamp=none --sign "${SIGN_IDENTITY}" "$@"; }
 
+# Sign every mach-o in the embedded service. Unsigned dylibs make macOS validate
+# the whole ML tree on first load, which can take minutes on a cold cache and made
+# the app time out waiting for readiness. Ad-hoc signing makes validation fast and
+# cacheable. Parallelized — the service ships hundreds of dylibs.
+SERVICE_EMBED="${CONTENTS}/Resources/service"
+if [ -d "${SERVICE_EMBED}" ]; then
+  echo "==> signing embedded service mach-o (ad-hoc)"
+  find "${SERVICE_EMBED}" -type f \( -name "*.so" -o -name "*.dylib" \) -print0 \
+    | xargs -0 -P8 codesign --force --sign "${SIGN_IDENTITY}" 2>/dev/null || true
+  find "${SERVICE_EMBED}" -type f -perm +111 ! -name "*.so" ! -name "*.dylib" -print0 2>/dev/null \
+    | xargs -0 -P8 codesign --force --sign "${SIGN_IDENTITY}" 2>/dev/null || true
+fi
+
 # Inner→outer signing order for Sparkle (XPC services → helpers → framework → app).
 FW="${FRAMEWORKS}/Sparkle.framework"
 if [ -d "${FW}" ]; then

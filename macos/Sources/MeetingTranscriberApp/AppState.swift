@@ -38,7 +38,12 @@ final class AppState: ObservableObject {
             do {
                 let port = try await Task.detached { try supervisor.start(launch) }.value
                 let baseURL = URL(string: "http://127.0.0.1:\(port)")!
-                guard await HealthClient.waitUntilReady(baseURL: baseURL, timeout: 30) else {
+                // The handshake arrives in ~2s, but the HTTP server only comes up
+                // after the service loads its full native ML dependency tree. On a
+                // cold first launch, macOS validates hundreds of dylibs, which can
+                // take a couple of minutes — so allow a generous readiness window
+                // rather than declaring failure. Subsequent launches are fast.
+                guard await HealthClient.waitUntilReady(baseURL: baseURL, timeout: 240) else {
                     self.phase = .serviceFailed("The service started but never became ready.")
                     return
                 }
