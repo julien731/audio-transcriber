@@ -30,7 +30,7 @@ cp "${ZIP_PATH}" "${WORKDIR}/archives/"
 : "${SPARKLE_ED_PRIVATE_KEY:?SPARKLE_ED_PRIVATE_KEY required to sign the appcast}"
 printf '%s' "${SPARKLE_ED_PRIVATE_KEY}" | "${SPARKLE_BIN}/generate_appcast" \
   --ed-key-file - \
-  --no-delta \
+  --maximum-deltas 0 \
   --download-url-prefix "$(dirname "${ENCLOSURE_URL}")/" \
   --minimum-system-version "${MIN_SYSTEM_VERSION:-13.0}" \
   "${WORKDIR}/archives"
