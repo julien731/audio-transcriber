@@ -111,6 +111,7 @@ private struct MeetingRow: View {
             }
             .font(.caption).foregroundStyle(.secondary).lineLimit(1)
         }
-        .padding(.vertical, 2)
+        .padding(.vertical, 6)
+        .padding(.horizontal, 2)
     }
 }
