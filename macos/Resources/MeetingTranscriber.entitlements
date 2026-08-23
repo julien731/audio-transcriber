@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- Not sandboxed: the app spawns a child service process and reads/writes
+	     the service's Application Support data (plan Artifact A). -->
+	<key>com.apple.security.app-sandbox</key>
+	<false/>
+	<!-- Ad-hoc/self-signed build: allow Sparkle's framework + XPC helpers to load
+	     under library validation (plan Artifact C, added when Sparkle lands in
+	     slice 10; declared here so the entitlement set is stable across slices). -->
+	<key>com.apple.security.cs.disable-library-validation</key>
+	<true/>
+</dict>
+</plist>

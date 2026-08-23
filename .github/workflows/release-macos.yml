@@ -1,0 +1,130 @@
+# Reusable macOS build/sign/publish for the native app (plan Artifact C / TD-5).
+#
+# Invoked from release.yml as a job in the SAME run (not tag-triggered): the
+# GITHUB_TOKEN recursion guard means a semantic-release tag/release triggers no
+# other workflow, so this must run within release.yml. It embeds the pinned real
+# service (Decision B), assembles + signs the .app + Sparkle, produces an
+# EdDSA-signed enclosure, updates the appcast, uploads to the release, and then
+# flips the draft to published.
+#
+# NOTE: several steps (real service embed, EdDSA signing keys, v1→v2 install
+# smoke) are finalized/verified at Milestone D0 on the maintainer/CI machine.
+name: Release macOS App
+
+on:
+  workflow_call:
+    inputs:
+      version:
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  build-macos:
+    runs-on: macos-14
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Select Xcode
+        run: sudo xcode-select -s /Applications/Xcode.app
+
+      # Decision B: fetch the pinned, checksummed self-contained service artifact
+      # (built once per service version on an arm64 machine) and verify its
+      # manifest against the app-repo's pinned expectation before embedding.
+      - name: Fetch + verify pinned service artifact
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          bash macos/scripts/fetch_service.sh   # downloads, checks sha256/commit/arch/version vs service-manifest.json
+
+      - name: Inject version into Info.plist
+        run: |
+          /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString ${{ inputs.version }}" macos/Resources/Info.plist
+          /usr/libexec/PlistBuddy -c "Set :CFBundleVersion ${{ inputs.version }}" macos/Resources/Info.plist
+
+      - name: Inject Sparkle public key
+        env:
+          SPARKLE_ED_PUBLIC_KEY: ${{ secrets.SPARKLE_ED_PUBLIC_KEY }}
+        run: |
+          /usr/libexec/PlistBuddy -c "Set :SUPublicEDKey ${SPARKLE_ED_PUBLIC_KEY}" macos/Resources/Info.plist
+
+      - name: Build + assemble .app (release, embeds real service + Sparkle)
+        run: |
+          # STRICT=1 makes a missing real service and any signing failure fatal and
+          # verifies the finished bundle. SERVICE_DIST points at the fetched+verified
+          # PyInstaller artifact (fetch_service.sh extracted it here).
+          cd macos && \
+            SERVICE_DIST="${GITHUB_WORKSPACE}/macos/build/service/unpacked" \
+            STRICT=1 \
+            bash scripts/build_app.sh release
+
+      - name: Zip app + measure final enclosure size
+        id: zip
+        run: |
+          cd macos/build
+          ditto -c -k --keepParent Blah.app "Blah-${{ inputs.version }}.zip"
+          SIZE=$(stat -f%z "Blah-${{ inputs.version }}.zip")
+          echo "size=${SIZE}" >> "$GITHUB_OUTPUT"
+          # >2 GB fallback (plan finding #1): GitHub asset limit is 2 GB. If the
+          # FINAL zip exceeds it, external enclosure hosting requires product
+          # approval + a documented BR-21 deviation — fail loudly rather than
+          # silently ship an un-installable enclosure.
+          if [ "${SIZE}" -gt 2147483648 ]; then
+            echo "::error::Final app zip exceeds 2 GB (${SIZE}); external enclosure hosting requires BR-21 sign-off (see plan)."
+            exit 1
+          fi
+
+      - name: Sign enclosure + update appcast
+        env:
+          SPARKLE_ED_PRIVATE_KEY: ${{ secrets.SPARKLE_ED_PRIVATE_KEY }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Download the current appcast (retain prior entries) and produce the merged feed.
+          gh release download --pattern appcast.xml --dir macos/build --clobber \
+            "$(gh release list --limit 20 --json tagName,isLatest -q '.[]|select(.isLatest)|.tagName')" || true
+          # Sparkle's SPM distribution ships its CLI tools under
+          # macos/.build/artifacts/sparkle/Sparkle/bin (populated by `swift build`
+          # in the build step). Fail loudly if not found rather than silently
+          # producing an empty SPARKLE_BIN.
+          SPARKLE_TOOL="$(find "${GITHUB_WORKSPACE}/macos/.build/artifacts" \
+            ~/Library/Developer/Xcode/DerivedData -name generate_appcast -type f 2>/dev/null | head -1)"
+          if [ -z "${SPARKLE_TOOL}" ]; then
+            echo "::error::generate_appcast not found under macos/.build/artifacts (did swift build run?)."
+            exit 1
+          fi
+          VERSION="${{ inputs.version }}" \
+          ZIP_PATH="macos/build/Blah-${{ inputs.version }}.zip" \
+          ENCLOSURE_URL="https://github.com/${{ github.repository }}/releases/download/${{ inputs.version }}/Blah-${{ inputs.version }}.zip" \
+          SPARKLE_BIN="$(dirname "${SPARKLE_TOOL}")" \
+          PREVIOUS_APPCAST="macos/build/appcast.xml" \
+          OUT_APPCAST="macos/build/appcast.xml" \
+          MIN_SYSTEM_VERSION="13.0" \
+          bash macos/scripts/make_appcast.sh
+
+      - name: Verify update artifacts (pre-publish gate)
+        run: |
+          # Headless-runnable verification: appcast parses + signed enclosure,
+          # enclosure length matches the zip, the .app passes codesign
+          # --verify --deep --strict, and SUPublicEDKey is a real key. Fails the
+          # release before publishing if any check does not pass. (The full GUI
+          # v1→v2 install remains a documented manual/D0 step.)
+          APPCAST="macos/build/appcast.xml" \
+          ZIP="macos/build/Blah-${{ inputs.version }}.zip" \
+          VERSION="${{ inputs.version }}" \
+          bash macos/scripts/verify_update.sh
+
+      - name: Upload artifacts + publish the draft
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release upload "${{ inputs.version }}" \
+            "macos/build/Blah-${{ inputs.version }}.zip" \
+            "macos/build/appcast.xml" --clobber
+          # Only now flip the draft to published (finding #7): a failed job above
+          # leaves the release a draft, never a published version without an app.
+          gh release edit "${{ inputs.version }}" --draft=false

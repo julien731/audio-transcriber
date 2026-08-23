@@ -13,6 +13,12 @@ jobs:
   release:
     name: Release
     runs-on: ubuntu-latest
+    outputs:
+      # Exposed by the @semantic-release/exec publishCmd (see .releaserc.js) so the
+      # macOS job can run in this SAME workflow run — a tag-triggered workflow
+      # would never fire under the GITHUB_TOKEN recursion guard (CLAUDE.md).
+      new_release_published: ${{ steps.semantic.outputs.new_release_published }}
+      new_release_version: ${{ steps.semantic.outputs.new_release_version }}
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -30,6 +36,17 @@ jobs:
         run: npm ci
 
       - name: Release
+        id: semantic
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: npx semantic-release
+
+  # macOS app build/sign/publish runs in the SAME run, gated on a release having
+  # been published. Reusable workflow; secrets inherited (Sparkle EdDSA keys).
+  build-macos:
+    needs: release
+    if: needs.release.outputs.new_release_published == 'true'
+    uses: ./.github/workflows/release-macos.yml
+    with:
+      version: ${{ needs.release.outputs.new_release_version }}
+    secrets: inherit

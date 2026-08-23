@@ -20,6 +20,16 @@ from backend.services import app_paths
 
 HOST = "127.0.0.1"
 SERVICE_FILE = "service.json"
+# Launch-coordination nonce set by the spawning app (native macOS app, plan
+# Artifact A). It lets the parent reject a stale/foreign service.json after PID
+# reuse. This is coordination, not configuration, so it is exempt in spirit from
+# the BR-21 "ignore ambient env" rule; when unset the service starts normally and
+# omits the nonce (dev run.py path, any non-app client).
+NONCE_ENV = "MT_SERVICE_NONCE"
+
+
+def service_nonce() -> str:
+    return os.environ.get(NONCE_ENV, "")
 
 
 def bind_free_socket(host: str = HOST, retries: int = 5) -> socket.socket:
@@ -45,16 +55,26 @@ def service_file_path() -> Path:
     return app_paths.app_support_dir() / SERVICE_FILE
 
 
-def write_service_file(port: int, pid: int | None = None) -> Path:
-    """Persist the chosen port and pid for clients that discover via file."""
+def write_service_file(port: int, pid: int | None = None, nonce: str = "") -> Path:
+    """Persist the chosen port and pid for clients that discover via file.
+
+    The launch nonce is included only when set, so an empty nonce keeps the file
+    byte-identical to the pre-nonce format (backward compatible).
+    """
     path = service_file_path()
-    path.write_text(json.dumps({"port": port, "pid": os.getpid() if pid is None else pid}), encoding="utf-8")
+    payload: dict[str, object] = {"port": port, "pid": os.getpid() if pid is None else pid}
+    if nonce:
+        payload["nonce"] = nonce
+    path.write_text(json.dumps(payload), encoding="utf-8")
     return path
 
 
-def handshake_line(port: int) -> str:
-    """Machine-readable stdout line announcing the service's port."""
-    return json.dumps({"event": "ready", "port": port})
+def handshake_line(port: int, nonce: str = "") -> str:
+    """Machine-readable stdout line announcing the service's port (and nonce)."""
+    payload: dict[str, object] = {"event": "ready", "port": port}
+    if nonce:
+        payload["nonce"] = nonce
+    return json.dumps(payload)
 
 
 def _emit_error(message: str) -> None:
@@ -69,16 +89,37 @@ def main() -> int:
         return 1
 
     port = sock.getsockname()[1]
-    write_service_file(port)
-    print(handshake_line(port), flush=True)
+    nonce = service_nonce()
+    write_service_file(port, nonce=nonce)
+    print(handshake_line(port, nonce=nonce), flush=True)
 
     import uvicorn
 
-    config = uvicorn.Config("backend.main:app", reload=False, log_level="info")
+    # Import the ASGI app object directly rather than by the string
+    # "backend.main:app". A string reference is invisible to PyInstaller's static
+    # analysis, so in a frozen bundle backend.main (and its router/service tree)
+    # would not be collected and uvicorn fails with "Could not import module
+    # backend.main". Importing it here — after the readiness handshake, so startup
+    # stays fast — makes PyInstaller bundle the whole tree and passes the app
+    # object straight to uvicorn.
+    from backend.main import app
+
+    config = uvicorn.Config(app, reload=False, log_level="info")
     server = uvicorn.Server(config)
     server.run(sockets=[sock])
     return 0
 
 
 if __name__ == "__main__":
+    # Critical for the frozen (PyInstaller) build: the transcription pipeline uses
+    # multiprocessing ('spawn' on macOS), which re-execs this very binary for each
+    # worker. Without freeze_support(), a spawned worker would re-run main() —
+    # starting a SECOND service instance whose startup runs recover_stuck_meetings()
+    # and kills the in-progress job ("Transcription interrupted by app restart").
+    # freeze_support() intercepts worker re-execs and returns immediately for the
+    # main process (a no-op in a normal dev run).
+    import multiprocessing
+
+    multiprocessing.freeze_support()
+
     raise SystemExit(main())

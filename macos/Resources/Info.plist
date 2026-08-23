@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleDisplayName</key>
+	<string>Blah</string>
+	<key>CFBundleExecutable</key>
+	<string>Blah</string>
+	<key>CFBundleIconFile</key>
+	<string>AppIcon</string>
+	<key>CFBundleIdentifier</key>
+	<string>co.nimblehq.Blah</string>
+	<key>CFBundleName</key>
+	<string>Blah</string>
+	<key>CFBundlePackageType</key>
+	<string>APPL</string>
+	<key>CFBundleShortVersionString</key>
+	<string>0.0.0</string>
+	<key>CFBundleVersion</key>
+	<string>0</string>
+	<key>LSApplicationCategoryType</key>
+	<string>public.app-category.productivity</string>
+	<key>LSMinimumSystemVersion</key>
+	<string>13.0</string>
+	<key>LSMultipleInstancesProhibited</key>
+	<true/>
+	<key>NSHighResolutionCapable</key>
+	<true/>
+	<key>SUEnableAutomaticChecks</key>
+	<true/>
+	<key>SUFeedURL</key>
+	<string>https://github.com/nimblehq/audio-transcriber/releases/latest/download/appcast.xml</string>
+	<key>SUPublicEDKey</key>
+	<string>nnJTHHBjllQCHtia3MGE2x0TuzsIkDMS7AVM6bFNx7c=</string>
+</dict>
+</plist>
