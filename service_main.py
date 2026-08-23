@@ -95,7 +95,16 @@ def main() -> int:
 
     import uvicorn
 
-    config = uvicorn.Config("backend.main:app", reload=False, log_level="info")
+    # Import the ASGI app object directly rather than by the string
+    # "backend.main:app". A string reference is invisible to PyInstaller's static
+    # analysis, so in a frozen bundle backend.main (and its router/service tree)
+    # would not be collected and uvicorn fails with "Could not import module
+    # backend.main". Importing it here — after the readiness handshake, so startup
+    # stays fast — makes PyInstaller bundle the whole tree and passes the app
+    # object straight to uvicorn.
+    from backend.main import app
+
+    config = uvicorn.Config(app, reload=False, log_level="info")
     server = uvicorn.Server(config)
     server.run(sockets=[sock])
     return 0
