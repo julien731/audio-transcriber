@@ -28,7 +28,7 @@ struct MeetingListView: View {
                 emptyState
             }
             ForEach(store.meetings) { meeting in
-                MeetingRow(meeting: meeting, isSelected: selection == meeting.id)
+                MeetingRow(meeting: meeting)
                     .tag(meeting.id)
                     .contextMenu {
                         Button(role: .destructive) { pendingDelete = meeting } label: {
@@ -92,14 +92,13 @@ struct MeetingListView: View {
 
 private struct MeetingRow: View {
     let meeting: MeetingSummary
-    var isSelected = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
             HStack {
                 Text(meeting.title).font(.body.weight(.medium)).lineLimit(1)
                 Spacer()
-                StatusBadgeView(badge: meeting.status.badge, isSelected: isSelected)
+                StatusBadgeView(badge: meeting.status.badge)
             }
             HStack(spacing: 8) {
                 Text(meeting.type.displayName)
