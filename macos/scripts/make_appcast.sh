@@ -28,11 +28,12 @@ cp "${ZIP_PATH}" "${WORKDIR}/archives/"
 # from an env var — pass it explicitly on stdin via `--ed-key-file -`, otherwise
 # generate_appcast searches the (empty) CI Keychain and fails.
 : "${SPARKLE_ED_PRIVATE_KEY:?SPARKLE_ED_PRIVATE_KEY required to sign the appcast}"
+# generate_appcast reads minimumSystemVersion from the app's Info.plist
+# (LSMinimumSystemVersion) automatically — there is no --minimum-system-version flag.
 printf '%s' "${SPARKLE_ED_PRIVATE_KEY}" | "${SPARKLE_BIN}/generate_appcast" \
   --ed-key-file - \
   --maximum-deltas 0 \
   --download-url-prefix "$(dirname "${ENCLOSURE_URL}")/" \
-  --minimum-system-version "${MIN_SYSTEM_VERSION:-13.0}" \
   "${WORKDIR}/archives"
 
 NEW_APPCAST="${WORKDIR}/archives/appcast.xml"
