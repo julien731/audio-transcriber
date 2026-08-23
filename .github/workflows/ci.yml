@@ -6,12 +6,19 @@ on:
   pull_request:
     branches: [main]
 
+# Cancel superseded runs on rapid pushes to the same ref. Matters most for the
+# macOS job below, which bills at ~10x — no point burning minutes on a commit
+# that's already been replaced.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   lint:
     name: Lint & Format
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - uses: actions/setup-python@v5
         with:
@@ -31,7 +38,7 @@ jobs:
     name: Test & Coverage
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - uses: actions/setup-python@v5
         with:
@@ -47,3 +54,61 @@ jobs:
 
       - name: Run tests with coverage
         run: pytest --cov --cov-report=term-missing --cov-fail-under=80
+
+  # Detect whether the Swift/macOS app is affected so the expensive (~10x-cost)
+  # macOS job only runs when it needs to. This is a job-level gate, NOT a
+  # top-level `paths:` filter: a workflow skipped by `paths:` leaves its required
+  # status check stuck "Pending" and blocks merge, whereas a job skipped by an
+  # `if:` conditional reports "Success" — so "Build & Test (macOS)" stays safe to
+  # require in branch protection while being skipped on Python/JS-only PRs.
+  changes:
+    name: Detect changes
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: read
+    outputs:
+      macos: ${{ steps.filter.outputs.macos }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: dorny/paths-filter@v4.0.3
+        id: filter
+        with:
+          filters: |
+            macos:
+              - 'macos/**'
+              - '.github/workflows/ci.yml'
+
+  macos:
+    name: Build & Test (macOS)
+    needs: changes
+    if: needs.changes.outputs.macos == 'true'
+    # macos-26's default toolchain is Xcode 26 / Swift 6+, which satisfies
+    # macos/Package.swift (swift-tools-version 6.0) — no Xcode-select step needed.
+    # release-macos.yml pins the SDK to macos-26 for the shipped appearance; we
+    # match the runner here so CI and release build against the same toolchain.
+    runs-on: macos-26
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+
+      # Cache resolved SPM dependencies + build products (incl. the pinned
+      # Sparkle checkout) to cut macOS minutes on repeat runs.
+      - uses: actions/cache@v6.1.0
+        with:
+          path: macos/.build
+          key: spm-${{ runner.os }}-${{ hashFiles('macos/Package.resolved') }}
+          restore-keys: |
+            spm-${{ runner.os }}-
+
+      - name: Build all targets
+        working-directory: macos
+        run: swift build
+
+      - name: Unit tests
+        working-directory: macos
+        run: swift run MeetingTranscriberKitTests
+
+      - name: Integration tests
+        working-directory: macos
+        run: swift run MeetingTranscriberIntegrationTests
