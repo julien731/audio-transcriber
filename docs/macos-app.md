@@ -7,6 +7,12 @@ transcription or workflow logic lives in the app (BR-6).
 
 Spec: `docs/specs/native-macos-app.md` · Plan: `docs/plans/94-native-macos-app.md`.
 
+**Name:** the product is **Blah** (`Blah.app`, bundle id `co.nimblehq.Blah`).
+Internal SwiftPM targets (`MeetingTranscriberKit`/`MeetingTranscriberApp`) and the
+embedded, separately-versioned **service** component keep the `MeetingTranscriber`
+name — they're implementation details users never see, and the service owns its
+own Application Support data dir.
+
 ## Layout
 
 ```
@@ -29,8 +35,8 @@ tests are executables:
 cd macos
 swift run MeetingTranscriberKitTests            # unit
 swift run MeetingTranscriberIntegrationTests    # integration (spawns real child processes)
-bash scripts/build_app.sh debug                 # assemble build/MeetingTranscriber.app (ad-hoc signed)
-open build/MeetingTranscriber.app
+bash scripts/build_app.sh debug                 # assemble build/Blah.app (ad-hoc signed)
+open build/Blah.app
 ```
 
 The debug build embeds a **stub** service (`scripts/stub_service.py`) that
@@ -92,7 +98,7 @@ Whisper-only). Setup shows only until provisioning completes (BR-14).
 The app is self-signed (not notarized), so first launch shows an "unidentified
 developer" warning. It is **not** permanently blocked:
 
-1. In Finder, **right-click** (or Control-click) `MeetingTranscriber.app` → **Open**.
+1. In Finder, **right-click** (or Control-click) `Blah.app` → **Open**.
 2. In the dialog, click **Open** again.
 
 macOS remembers the choice; subsequent launches are normal double-click. (Do not

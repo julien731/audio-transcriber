@@ -16,14 +16,15 @@ echo "==> swift build -c ${CONFIG}"
 swift build -c "${CONFIG}" --product MeetingTranscriberApp
 BIN_PATH="$(swift build -c "${CONFIG}" --show-bin-path)"
 
-APP="${ROOT}/build/MeetingTranscriber.app"
+APP="${ROOT}/build/Blah.app"
 CONTENTS="${APP}/Contents"
 FRAMEWORKS="${CONTENTS}/Frameworks"
 echo "==> assembling ${APP}"
 rm -rf "${APP}"
 mkdir -p "${CONTENTS}/MacOS" "${CONTENTS}/Resources/service" "${FRAMEWORKS}"
 
-cp "${BIN_PATH}/MeetingTranscriberApp" "${CONTENTS}/MacOS/MeetingTranscriber"
+# The SwiftPM product is still MeetingTranscriberApp; copy it to the CFBundleExecutable name (Blah).
+cp "${BIN_PATH}/MeetingTranscriberApp" "${CONTENTS}/MacOS/Blah"
 cp "${ROOT}/Resources/Info.plist" "${CONTENTS}/Info.plist"
 
 # STRICT mode (release builds): missing real service and any signing failure are

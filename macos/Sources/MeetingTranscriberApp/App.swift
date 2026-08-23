@@ -5,7 +5,7 @@ struct MeetingTranscriberApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
 
     var body: some Scene {
-        WindowGroup("Meeting Transcriber") {
+        WindowGroup("Blah") {
             RootView(appState: appDelegate.appState)
                 .frame(minWidth: 720, minHeight: 480)
         }

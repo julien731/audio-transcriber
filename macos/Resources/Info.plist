@@ -3,13 +3,13 @@
 <plist version="1.0">
 <dict>
 	<key>CFBundleDisplayName</key>
-	<string>Meeting Transcriber</string>
+	<string>Blah</string>
 	<key>CFBundleExecutable</key>
-	<string>MeetingTranscriber</string>
+	<string>Blah</string>
 	<key>CFBundleIdentifier</key>
-	<string>co.nimblehq.MeetingTranscriber</string>
+	<string>co.nimblehq.Blah</string>
 	<key>CFBundleName</key>
-	<string>Meeting Transcriber</string>
+	<string>Blah</string>
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>

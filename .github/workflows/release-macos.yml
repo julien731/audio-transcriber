@@ -67,8 +67,8 @@ jobs:
         id: zip
         run: |
           cd macos/build
-          ditto -c -k --keepParent MeetingTranscriber.app "MeetingTranscriber-${{ inputs.version }}.zip"
-          SIZE=$(stat -f%z "MeetingTranscriber-${{ inputs.version }}.zip")
+          ditto -c -k --keepParent Blah.app "Blah-${{ inputs.version }}.zip"
+          SIZE=$(stat -f%z "Blah-${{ inputs.version }}.zip")
           echo "size=${SIZE}" >> "$GITHUB_OUTPUT"
           # >2 GB fallback (plan finding #1): GitHub asset limit is 2 GB. If the
           # FINAL zip exceeds it, external enclosure hosting requires product
@@ -98,8 +98,8 @@ jobs:
             exit 1
           fi
           VERSION="${{ inputs.version }}" \
-          ZIP_PATH="macos/build/MeetingTranscriber-${{ inputs.version }}.zip" \
-          ENCLOSURE_URL="https://github.com/${{ github.repository }}/releases/download/${{ inputs.version }}/MeetingTranscriber-${{ inputs.version }}.zip" \
+          ZIP_PATH="macos/build/Blah-${{ inputs.version }}.zip" \
+          ENCLOSURE_URL="https://github.com/${{ github.repository }}/releases/download/${{ inputs.version }}/Blah-${{ inputs.version }}.zip" \
           SPARKLE_BIN="$(dirname "${SPARKLE_TOOL}")" \
           PREVIOUS_APPCAST="macos/build/appcast.xml" \
           OUT_APPCAST="macos/build/appcast.xml" \
@@ -114,7 +114,7 @@ jobs:
           # release before publishing if any check does not pass. (The full GUI
           # v1→v2 install remains a documented manual/D0 step.)
           APPCAST="macos/build/appcast.xml" \
-          ZIP="macos/build/MeetingTranscriber-${{ inputs.version }}.zip" \
+          ZIP="macos/build/Blah-${{ inputs.version }}.zip" \
           VERSION="${{ inputs.version }}" \
           bash macos/scripts/verify_update.sh
 
@@ -123,7 +123,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           gh release upload "${{ inputs.version }}" \
-            "macos/build/MeetingTranscriber-${{ inputs.version }}.zip" \
+            "macos/build/Blah-${{ inputs.version }}.zip" \
             "macos/build/appcast.xml" --clobber
           # Only now flip the draft to published (finding #7): a failed job above
           # leaves the release a draft, never a published version without an app.
