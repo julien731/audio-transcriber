@@ -165,9 +165,7 @@ class Handler(BaseHTTPRequestHandler):
         body = json.dumps(payload).encode("utf-8")
         self._send_bytes(status, body, "application/json")
 
-    def _send_bytes(
-        self, status: int, body: bytes, content_type: str, extra_headers: dict | None = None
-    ) -> None:
+    def _send_bytes(self, status: int, body: bytes, content_type: str, extra_headers: dict | None = None) -> None:
         """Raw/binary responder (audio, empty 200s) — keeps _send JSON-only."""
         self.send_response(status)
         self.send_header("Content-Type", content_type)
