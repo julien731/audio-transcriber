@@ -123,8 +123,8 @@ private struct AudioBar: View {
                     .monospacedDigit().font(.caption).foregroundStyle(.secondary)
             }
             .padding(.horizontal, 12).padding(.vertical, 8)
-            .background(Capsule(style: .continuous).fill(Color.primary.opacity(0.05)))
-            .overlay(Capsule(style: .continuous).strokeBorder(Color.primary.opacity(0.08)))
+            .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(Color.primary.opacity(0.05)))
+            .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).strokeBorder(Color.primary.opacity(0.08)))
 
             speedControl
         }
@@ -144,8 +144,8 @@ private struct AudioBar: View {
             }
             .font(.caption)
             .padding(.horizontal, 12).padding(.vertical, 6)
-            .background(Capsule().fill(Color.primary.opacity(0.05)))
-            .overlay(Capsule().strokeBorder(Color.primary.opacity(0.08)))
+            .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(Color.primary.opacity(0.05)))
+            .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).strokeBorder(Color.primary.opacity(0.08)))
         }
         .menuStyle(.borderlessButton)
         .menuIndicator(.hidden)
