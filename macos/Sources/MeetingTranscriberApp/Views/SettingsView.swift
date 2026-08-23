@@ -34,6 +34,29 @@ struct SettingsView: View {
     }
 }
 
+/// Settings presented as a sheet from an in-app control (the sidebar gear), as
+/// opposed to the standard ⌘, `Settings` scene. Reuses the same token form; the
+/// caller only reaches this once the service is ready, so the client is passed
+/// directly. Chrome adds a title and a Done button.
+struct SettingsSheet: View {
+    let client: APIClient
+    let onDone: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            HStack {
+                Text("Settings").font(.title2.weight(.semibold))
+                Spacer()
+                Button("Done", action: onDone).keyboardShortcut(.defaultAction)
+            }
+            Divider()
+            TokenSettingsForm(client: client)
+        }
+        .frame(width: 460)
+        .padding(24)
+    }
+}
+
 /// The token form, active once the service is ready. Mirrors `SetupWizardView`'s
 /// `@State` + async-model + poll-while-downloading pattern.
 private struct TokenSettingsForm: View {

@@ -9,8 +9,20 @@ struct MeetingListView: View {
     let onNewMeeting: () -> Void
 
     @State private var pendingDelete: MeetingSummary?
+    @State private var showingSettings = false
 
     var body: some View {
+        VStack(spacing: 0) {
+            meetingList
+            Divider()
+            settingsBar
+        }
+        .sheet(isPresented: $showingSettings) {
+            SettingsSheet(client: store.client) { showingSettings = false }
+        }
+    }
+
+    private var meetingList: some View {
         List(selection: $selection) {
             if store.meetings.isEmpty && !store.isLoading {
                 emptyState
@@ -50,6 +62,22 @@ struct MeetingListView: View {
             Text("This permanently removes the meeting, its transcript, and audio. This can’t be undone.")
         }
         .task { await store.load() }
+    }
+
+    /// Conductor-style footer pinned to the bottom of the sidebar: a settings gear
+    /// on the left that opens the settings sheet.
+    private var settingsBar: some View {
+        HStack {
+            Button { showingSettings = true } label: {
+                Image(systemName: "gearshape").imageScale(.large)
+            }
+            .buttonStyle(.borderless)
+            .help("Settings")
+            .accessibilityLabel("Settings")
+            Spacer()
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
     }
 
     private var emptyState: some View {
