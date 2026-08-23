@@ -17,17 +17,31 @@ final class AppState: ObservableObject {
 
     private var supervisor = ServiceSupervisor()
     private let nonce = UUID().uuidString
+    /// Bumped on every start()/restart(). An in-flight launch only mutates state
+    /// or keeps its child if it is still the current generation — so a superseded
+    /// launch can't orphan a process or overwrite the fresh app state.
+    private var launchGeneration = 0
 
     // MARK: Launch
 
     func start() {
-        phase = .starting
-        // A `Process` cannot be re-run, so `restart()` needs a fresh supervisor;
-        // reusing the prior one makes every relaunch fail at `process.run()`.
+        launchGeneration += 1
+        let generation = launchGeneration
+
+        // Tear down the previous supervisor before replacing it (a `Process` can't
+        // be re-run). Detach its crash callback so a late exit can't overwrite
+        // fresh state, and terminate its child off the main thread so it can't
+        // orphan and interfere with the replacement.
+        let previous = supervisor
+        previous.onUnexpectedTermination = nil
         supervisor = ServiceSupervisor()
+        if previous.isRunning { Task.detached { previous.terminate() } }
+
+        phase = .starting
         supervisor.onUnexpectedTermination = { [weak self] status in
             Task { @MainActor in
-                self?.phase = .serviceFailed("The transcription service exited unexpectedly (status \(status)). Restart to continue.")
+                guard let self, self.launchGeneration == generation else { return }
+                self.phase = .serviceFailed("The transcription service exited unexpectedly (status \(status)). Restart to continue.")
             }
         }
         guard let launch = resolveLaunch() else {
@@ -37,6 +51,11 @@ final class AppState: ObservableObject {
         Task { [supervisor] in
             do {
                 let port = try await Task.detached { try supervisor.start(launch) }.value
+                // A newer launch superseded this one: kill this child, touch nothing.
+                guard self.launchGeneration == generation else {
+                    await Task.detached { supervisor.terminate() }.value
+                    return
+                }
                 let baseURL = URL(string: "http://127.0.0.1:\(port)")!
                 // The handshake arrives in ~2s, but the HTTP server only comes up
                 // after the service loads its full native ML dependency tree. On a
@@ -44,32 +63,45 @@ final class AppState: ObservableObject {
                 // take a couple of minutes — so allow a generous readiness window
                 // rather than declaring failure. Subsequent launches are fast.
                 guard await HealthClient.waitUntilReady(baseURL: baseURL, timeout: 240) else {
-                    self.phase = .serviceFailed("The service started but never became ready.")
+                    // The child never served HTTP — terminate it so it can't linger.
+                    await Task.detached { supervisor.terminate() }.value
+                    if self.launchGeneration == generation {
+                        self.phase = .serviceFailed("The service started but never became ready.")
+                    }
                     return
                 }
-                await self.routeAfterReady(baseURL: baseURL)
+                guard self.launchGeneration == generation else {
+                    await Task.detached { supervisor.terminate() }.value
+                    return
+                }
+                await self.routeAfterReady(baseURL: baseURL, generation: generation)
             } catch {
-                self.phase = .serviceFailed(Self.describe(error))
+                // Kill any child left by a failed start (no-op if already gone).
+                await Task.detached { supervisor.terminate() }.value
+                if self.launchGeneration == generation {
+                    self.phase = .serviceFailed(Self.describe(error))
+                }
             }
         }
     }
 
     /// After the service is reachable, decide setup vs main from provisioning.
-    private func routeAfterReady(baseURL: URL) async {
+    private func routeAfterReady(baseURL: URL, generation: Int) async {
         let client = APIClient(baseURL: baseURL)
+        let resolved: Phase
         do {
             let status = try await client.provisioning()
-            if status.provisioningCompleted {
-                phase = .ready(client)
-            } else {
-                phase = .setup(ProvisioningController(client: client, initial: status), client)
-            }
+            resolved = status.provisioningCompleted
+                ? .ready(client)
+                : .setup(ProvisioningController(client: client, initial: status), client)
         } catch {
             // Provisioning is unreachable but health passed — still let the user in
             // to browse existing meetings (offline-first, EC-7); new transcription
             // is gated server-side.
-            phase = .ready(client)
+            resolved = .ready(client)
         }
+        guard launchGeneration == generation else { return }
+        phase = resolved
     }
 
     /// Called by the setup wizard when provisioning completes.
