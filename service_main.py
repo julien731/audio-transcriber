@@ -111,4 +111,15 @@ def main() -> int:
 
 
 if __name__ == "__main__":
+    # Critical for the frozen (PyInstaller) build: the transcription pipeline uses
+    # multiprocessing ('spawn' on macOS), which re-execs this very binary for each
+    # worker. Without freeze_support(), a spawned worker would re-run main() —
+    # starting a SECOND service instance whose startup runs recover_stuck_meetings()
+    # and kills the in-progress job ("Transcription interrupted by app restart").
+    # freeze_support() intercepts worker re-execs and returns immediately for the
+    # main process (a no-op in a normal dev run).
+    import multiprocessing
+
+    multiprocessing.freeze_support()
+
     raise SystemExit(main())
