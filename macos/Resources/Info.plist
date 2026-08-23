@@ -6,6 +6,8 @@
 	<string>Blah</string>
 	<key>CFBundleExecutable</key>
 	<string>Blah</string>
+	<key>CFBundleIconFile</key>
+	<string>AppIcon</string>
 	<key>CFBundleIdentifier</key>
 	<string>co.nimblehq.Blah</string>
 	<key>CFBundleName</key>

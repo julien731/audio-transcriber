@@ -44,6 +44,15 @@ simulates health + provisioning so the launch and setup flows are walkable
 without the multi-GB ML stack. The real self-contained service is embedded at
 Milestone D0 (below).
 
+## App icon
+
+Provide a 1024×1024 PNG, then:
+```bash
+bash macos/scripts/make_icon.sh path/to/icon-1024.png   # -> macos/Resources/AppIcon.icns
+```
+`build_app.sh` embeds `AppIcon.icns` automatically (absent → macOS default icon).
+`Info.plist` already declares `CFBundleIconFile = AppIcon`.
+
 ## Feature-parity matrix (vs the web UI)
 
 Each interaction is classified `API-data` (render as-is), `present` (format in

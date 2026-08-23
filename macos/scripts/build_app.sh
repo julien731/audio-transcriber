@@ -27,6 +27,12 @@ mkdir -p "${CONTENTS}/MacOS" "${CONTENTS}/Resources/service" "${FRAMEWORKS}"
 cp "${BIN_PATH}/MeetingTranscriberApp" "${CONTENTS}/MacOS/Blah"
 cp "${ROOT}/Resources/Info.plist" "${CONTENTS}/Info.plist"
 
+# App icon (optional): drop Resources/AppIcon.icns in and it ships automatically.
+# Generate it from a 1024px PNG with scripts/make_icon.sh. Absent → default icon.
+if [ -f "${ROOT}/Resources/AppIcon.icns" ]; then
+  cp "${ROOT}/Resources/AppIcon.icns" "${CONTENTS}/Resources/AppIcon.icns"
+fi
+
 # STRICT mode (release builds): missing real service and any signing failure are
 # fatal, and the finished bundle is verified. Set STRICT=1 in release-macos.yml.
 STRICT="${STRICT:-0}"
