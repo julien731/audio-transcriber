@@ -91,25 +91,35 @@ final class AppState: ObservableObject {
 
     // MARK: Service command resolution
 
-    /// D1: launch the bundled stub Python service; `MT_STUB_SERVICE_PATH` overrides
-    /// for `swift run`/dev outside a .app. Milestone D0 swaps in the real native
-    /// service executable under Contents/Resources/service/.
+    /// Resolve the service to launch, preferring the real embedded PyInstaller
+    /// service (D0) and falling back to the dev stub (D1). `MT_STUB_SERVICE_PATH`
+    /// forces the stub for `swift run`/dev outside a .app bundle.
     private func resolveLaunch() -> ServiceSupervisor.Launch? {
-        let envOverride = ProcessInfo.processInfo.environment["MT_STUB_SERVICE_PATH"]
-        let scriptPath: String?
-        if let envOverride {
-            scriptPath = envOverride
-        } else if let resources = Bundle.main.resourceURL {
-            scriptPath = resources.appendingPathComponent("service/stub_service.py").path
-        } else {
-            scriptPath = nil
+        let fm = FileManager.default
+
+        // 1) Explicit dev override → stub via python3.
+        if let override = ProcessInfo.processInfo.environment["MT_STUB_SERVICE_PATH"] {
+            return ServiceSupervisor.Launch(
+                executableURL: URL(fileURLWithPath: "/usr/bin/env"),
+                arguments: ["python3", override], nonce: nonce)
         }
-        guard let scriptPath else { return nil }
-        return ServiceSupervisor.Launch(
-            executableURL: URL(fileURLWithPath: "/usr/bin/env"),
-            arguments: ["python3", scriptPath],
-            nonce: nonce
-        )
+
+        guard let resources = Bundle.main.resourceURL else { return nil }
+
+        // 2) Real embedded self-contained service (D0): a native arm64 executable.
+        let real = resources.appendingPathComponent("service/MeetingTranscriber/MeetingTranscriber")
+        if fm.isExecutableFile(atPath: real.path) {
+            return ServiceSupervisor.Launch(executableURL: real, arguments: [], nonce: nonce)
+        }
+
+        // 3) Dev stub (D1): python3 script.
+        let stub = resources.appendingPathComponent("service/stub_service.py")
+        if fm.fileExists(atPath: stub.path) {
+            return ServiceSupervisor.Launch(
+                executableURL: URL(fileURLWithPath: "/usr/bin/env"),
+                arguments: ["python3", stub.path], nonce: nonce)
+        }
+        return nil
     }
 
     private static func describe(_ error: Error) -> String {

@@ -44,7 +44,14 @@ let package = Package(
                 "MeetingTranscriberKit",
                 .product(name: "Sparkle", package: "Sparkle"),
             ],
-            swiftSettings: [.swiftLanguageMode(.v5)]
+            swiftSettings: [.swiftLanguageMode(.v5)],
+            // The .app assembles Sparkle.framework into Contents/Frameworks/, so the
+            // executable in Contents/MacOS/ must search there at runtime. Without
+            // this rpath the app crashes at launch: "Library not loaded:
+            // @rpath/Sparkle.framework/...".
+            linkerSettings: [
+                .unsafeFlags(["-Xlinker", "-rpath", "-Xlinker", "@executable_path/../Frameworks"])
+            ]
         ),
         .executableTarget(
             name: "MeetingTranscriberKitTests",

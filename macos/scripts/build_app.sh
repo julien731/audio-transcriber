@@ -25,7 +25,18 @@ mkdir -p "${CONTENTS}/MacOS" "${CONTENTS}/Resources/service" "${FRAMEWORKS}"
 
 cp "${BIN_PATH}/MeetingTranscriberApp" "${CONTENTS}/MacOS/MeetingTranscriber"
 cp "${ROOT}/Resources/Info.plist" "${CONTENTS}/Info.plist"
-cp "${ROOT}/scripts/stub_service.py" "${CONTENTS}/Resources/service/stub_service.py"
+
+# Embed the service: the real self-contained PyInstaller bundle if available
+# (D0), else the dev stub (D1). SERVICE_DIST defaults to ../dist/MeetingTranscriber
+# (pyinstaller output). The app's AppState prefers the real executable.
+SERVICE_DIST="${SERVICE_DIST:-${ROOT}/../dist/MeetingTranscriber}"
+if [ -d "${SERVICE_DIST}" ]; then
+  echo "==> embedding real service from ${SERVICE_DIST}"
+  cp -R "${SERVICE_DIST}" "${CONTENTS}/Resources/service/MeetingTranscriber"
+else
+  echo "==> embedding dev stub service (no real bundle at ${SERVICE_DIST})"
+  cp "${ROOT}/scripts/stub_service.py" "${CONTENTS}/Resources/service/stub_service.py"
+fi
 
 # Embed Sparkle.framework preserving symlinks + executable permissions.
 if [ -d "${BIN_PATH}/Sparkle.framework" ]; then
