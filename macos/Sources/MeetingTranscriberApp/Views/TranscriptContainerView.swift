@@ -159,7 +159,7 @@ private struct WaveformScrubber: View {
     let progress: Double
     let onScrub: (Double) -> Void
 
-    private let bars: [CGFloat] = WaveformScrubber.makeBars(count: 56)
+    private let bars: [CGFloat] = WaveformScrubber.makeBars(count: 60)
 
     var body: some View {
         GeometryReader { geo in
@@ -167,7 +167,7 @@ private struct WaveformScrubber: View {
                 ForEach(bars.indices, id: \.self) { index in
                     Capsule()
                         .fill(isPlayed(index) ? Color.accentColor : Color.primary.opacity(0.22))
-                        .frame(width: 3, height: max(4, geo.size.height * bars[index]))
+                        .frame(width: 4, height: max(5, geo.size.height * bars[index]))
                         .frame(maxWidth: .infinity)
                 }
             }
@@ -185,13 +185,17 @@ private struct WaveformScrubber: View {
         Double(index) / Double(bars.count) <= progress
     }
 
-    /// Deterministic bar heights (0...1) shaped to read like a waveform — stable
-    /// across renders and independent of the actual (here silent) audio samples.
+    /// Deterministic bar heights (0.18...1) shaped to read like a waveform. Two
+    /// incommensurate hash terms keep it aperiodic (no visibly repeating pattern),
+    /// stable across renders and independent of the actual (here silent) samples.
     static func makeBars(count: Int) -> [CGFloat] {
-        (0..<count).map { i in
+        func hash(_ n: Double) -> Double {
+            abs(sin(n * 12.9898 + 78.233) * 43758.5453).truncatingRemainder(dividingBy: 1)
+        }
+        return (0..<count).map { i in
             let x = Double(i)
-            let value = 0.35 + 0.4 * abs(sin(x * 0.6) + 0.5 * sin(x * 1.7 + 1))
-            return CGFloat(min(1, value))
+            let value = 0.18 + 0.82 * (0.6 * hash(x) + 0.4 * hash(x * 2.317 + 4.1))
+            return CGFloat(min(1, max(0.18, value)))
         }
     }
 }
