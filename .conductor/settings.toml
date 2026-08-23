@@ -2,5 +2,18 @@
 
 [scripts]
 setup = "make setup"
-run = "make run PORT=$CONDUCTOR_PORT"
 run_mode = "concurrent"
+
+# Web app: the FastAPI SPA on this workspace's allocated port. Default run.
+[scripts.run.web]
+command = "make run PORT=$CONDUCTOR_PORT"
+default = true
+icon = "globe"
+
+# Native macOS app: build (debug) + open the .app bundle. Local-only — needs the
+# Swift toolchain and a GUI, and ignores $CONDUCTOR_PORT (the app spawns its own
+# embedded service). Runs the dev stub service, not real transcription.
+[scripts.run.app]
+command = "make app"
+available_in = [ "local" ]
+icon = "app-window"
