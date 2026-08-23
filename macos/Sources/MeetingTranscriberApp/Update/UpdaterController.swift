@@ -16,20 +16,42 @@ final class BusyState {
 /// This code compiles here but is only meaningfully exercised on a packaged,
 /// signed build — the real v1→v2 install is proven at Milestone D0.
 final class UpdaterController: NSObject, SPUUpdaterDelegate {
-    private var controller: SPUStandardUpdaterController!
+    private var controller: SPUStandardUpdaterController?
     private var pendingInstall: (() -> Void)?
+
+    /// Whether auto-update is active. False when `SUPublicEDKey` isn't a real key
+    /// yet (local/dev builds before D0 injects it) — in that state we do NOT start
+    /// Sparkle, so an unconfigured updater can't brick the app at launch.
+    private(set) var isEnabled = false
 
     override init() {
         super.init()
-        // The delegate is supplied at construction; `startingUpdater: true`
-        // auto-starts the background updater.
-        controller = SPUStandardUpdaterController(startingUpdater: true,
-                                                  updaterDelegate: self,
-                                                  userDriverDelegate: nil)
+        guard Self.hasValidPublicKey else {
+            NSLog("Sparkle: SUPublicEDKey not configured; auto-update disabled for this build.")
+            return
+        }
+        // Construct without auto-starting so we can catch a start failure instead
+        // of Sparkle showing its "updater failed to start" alert.
+        let controller = SPUStandardUpdaterController(startingUpdater: false,
+                                                      updaterDelegate: self,
+                                                      userDriverDelegate: nil)
+        do {
+            try controller.updater.start()
+            self.controller = controller
+            isEnabled = true
+        } catch {
+            NSLog("Sparkle updater did not start: \(error.localizedDescription)")
+        }
+    }
+
+    /// A real EdDSA public key is present (not absent, empty, or the placeholder).
+    static var hasValidPublicKey: Bool {
+        guard let key = Bundle.main.object(forInfoDictionaryKey: "SUPublicEDKey") as? String else { return false }
+        return !key.isEmpty && !key.hasPrefix("REPLACE_WITH")
     }
 
     func checkForUpdates() {
-        controller.checkForUpdates(nil)
+        controller?.checkForUpdates(nil)
     }
 
     // MARK: SPUUpdaterDelegate
