@@ -1,4 +1,4 @@
-.PHONY: setup run clean
+.PHONY: setup run app clean
 
 VENV := .venv
 PORT ?= 8000
@@ -23,6 +23,15 @@ setup: $(VENV)/bin/uvicorn
 # $CONDUCTOR_PORT this way).
 run: $(VENV)/bin/uvicorn
 	PORT=$(PORT) $(VENV)/bin/python run.py
+
+# Build the native macOS app (debug) and open it. Incremental: only changed
+# Swift recompiles. Dev builds embed the lightweight stub service, so this is a
+# fast Swift/SwiftUI iteration loop — it does NOT do real transcription (that
+# needs the PyInstaller bundle at dist/MeetingTranscriber). For transcription
+# work use `make run` instead.
+app:
+	bash macos/scripts/build_app.sh debug
+	open macos/build/Blah.app
 
 clean:
 	rm -rf $(VENV) data/meetings/*
