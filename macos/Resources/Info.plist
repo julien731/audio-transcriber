@@ -32,5 +32,7 @@
 	<string>https://github.com/nimblehq/audio-transcriber/releases/latest/download/appcast.xml</string>
 	<key>SUPublicEDKey</key>
 	<string>nnJTHHBjllQCHtia3MGE2x0TuzsIkDMS7AVM6bFNx7c=</string>
+	<key>SUScheduledCheckInterval</key>
+	<integer>21600</integer>
 </dict>
 </plist>
