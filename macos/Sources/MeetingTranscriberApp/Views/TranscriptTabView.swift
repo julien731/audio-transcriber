@@ -15,10 +15,19 @@ struct TranscriptTabView: View {
 
     @State private var renaming: TranscriptSegment?
     @State private var customName = ""
+    /// Speakers panel (story #121): toggle + per-speaker cycle cursor. Each key is
+    /// a speaker id mapped to the last segment jumped to, so every speaker advances
+    /// through its own passages independently.
+    @State private var showSpeakers = false
+    @State private var cursors: [String: String] = [:]
     private let prefs = Preferences()
 
     private var colors: [String: String] {
         SpeakerColor.assignments(orderedSpeakerIds: SpeakerColor.orderedSpeakerIds(in: transcript.segments))
+    }
+
+    private var speakerRows: [SpeakerPanel.SpeakerRow] {
+        SpeakerPanel.rows(in: transcript.segments, speakers: speakers)
     }
 
     var body: some View {
@@ -36,10 +45,57 @@ struct TranscriptTabView: View {
                 guard let id else { return }
                 withAnimation { proxy.scrollTo(id, anchor: .center) }
             }
+            .overlay(alignment: .topTrailing) { speakersToggle }
+            .overlay(alignment: .topTrailing) {
+                if showSpeakers {
+                    SpeakersPanelView(rows: speakerRows,
+                                      summary: SpeakerPanel.summary(for: speakerRows),
+                                      onSelect: { jump(to: $0, proxy: proxy) },
+                                      onClose: { showSpeakers = false })
+                        .padding(.trailing, 12).padding(.top, 56)
+                        .transition(.move(edge: .trailing).combined(with: .opacity))
+                }
+            }
         }
         .sheet(item: $renaming) { segment in
             renameSheet(segment)
         }
+    }
+
+    /// Floating toggle for the speakers panel; badges the unnamed-speaker count.
+    private var speakersToggle: some View {
+        let unnamed = speakerRows.filter(\.isUnnamed).count
+        return Button {
+            withAnimation(.easeInOut(duration: 0.18)) { showSpeakers.toggle() }
+        } label: {
+            Image(systemName: "person.2.fill")
+                .font(.system(size: 13, weight: .semibold))
+                .padding(9)
+                .background(showSpeakers ? Color.accentColor : Color.primary.opacity(0.08), in: Circle())
+                .foregroundStyle(showSpeakers ? .white : .primary)
+                .overlay(alignment: .topTrailing) {
+                    if unnamed > 0 {
+                        Text("\(unnamed)")
+                            .font(.system(size: 9, weight: .bold)).foregroundStyle(.white)
+                            .padding(3).background(.orange, in: Circle())
+                            .offset(x: 4, y: -4)
+                    }
+                }
+        }
+        .buttonStyle(.plain)
+        .help("Jump to speaker")
+        .accessibilityLabel("Jump to speaker")
+        .padding(.trailing, 12).padding(.top, 12)
+    }
+
+    /// Jump to a speaker's next passage, advancing that speaker's cursor. A no-op
+    /// when the speaker has no resolvable segment.
+    private func jump(to speakerId: String, proxy: ScrollViewProxy) {
+        guard let target = SpeakerPanel.nextSegmentId(for: speakerId,
+                                                      in: transcript.segments,
+                                                      after: cursors[speakerId]) else { return }
+        cursors[speakerId] = target
+        withAnimation { proxy.scrollTo(target, anchor: .center) }
     }
 
     private func segmentRow(_ segment: TranscriptSegment) -> some View {
@@ -128,6 +184,65 @@ struct TranscriptTabView: View {
                 store.setError((error as? APIError)?.userMessage ?? "Could not rename the speaker.")
             }
         }
+    }
+}
+
+/// Speakers panel (story #121): lists each distinct speaker with their segment
+/// color and name; tapping a row cycles to that speaker's next passage. Jump only
+/// — renaming stays on the per-segment menu.
+private struct SpeakersPanelView: View {
+    let rows: [SpeakerPanel.SpeakerRow]
+    let summary: String
+    let onSelect: (String) -> Void
+    let onClose: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack {
+                Text("Speakers").font(.headline)
+                Spacer()
+                Button(action: onClose) {
+                    Image(systemName: "xmark").font(.system(size: 11, weight: .semibold))
+                }
+                .buttonStyle(.plain).foregroundStyle(.secondary)
+                .help("Close")
+            }
+            .padding(.horizontal, 12).padding(.vertical, 10)
+            Text(summary).font(.caption).foregroundStyle(.secondary)
+                .padding(.horizontal, 12).padding(.bottom, 8)
+            Divider()
+            ScrollView {
+                VStack(spacing: 0) {
+                    ForEach(rows) { row in
+                        Button { onSelect(row.id) } label: { rowLabel(row) }
+                            .buttonStyle(.plain)
+                    }
+                }
+            }
+        }
+        .frame(width: 240)
+        .frame(maxHeight: 360)
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(Color.primary.opacity(0.1)))
+        .shadow(color: .black.opacity(0.18), radius: 12, y: 4)
+    }
+
+    private func rowLabel(_ row: SpeakerPanel.SpeakerRow) -> some View {
+        HStack(spacing: 8) {
+            Circle().fill(Color(hex: row.colorHex)).frame(width: 10, height: 10)
+            Text(row.displayName)
+                .font(.callout)
+                .foregroundStyle(row.isUnnamed ? .secondary : .primary)
+                .italic(row.isUnnamed)
+            Spacer()
+            if row.isUnnamed {
+                Text("?").font(.caption.weight(.bold)).foregroundStyle(.orange)
+                    .frame(width: 16, height: 16)
+                    .background(.orange.opacity(0.15), in: Circle())
+            }
+        }
+        .padding(.horizontal, 12).padding(.vertical, 8)
+        .contentShape(Rectangle())
     }
 }
 
