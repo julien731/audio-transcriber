@@ -59,4 +59,6 @@ Both save paths call `prefs.addRecentSpeakerName(trimmed)`.
 
 ## Deviations from Plan
 
-- None. Implemented as planned. Adopted the two architect plan-review advisories folded into the plan: `.radioGroup` picker style and acknowledging the pre-existing `SpeakerEditorView`. Recent-name menu buttons kept single-segment per TD-3 (QA flagged the resulting web-parity divergence as non-blocking, for optional PM/design follow-up).
+- Adopted the two architect plan-review advisories folded into the plan: `.radioGroup` picker style and acknowledging the pre-existing `SpeakerEditorView`.
+- Reversed TD-3 after user feedback: recent-name menu buttons no longer rename a single segment instantly. They now prefill and open the rename sheet, so a recent name still goes through the scope choice (default all segments) — closer to the web chips' behavior.
+- Made the dev stub service (`macos/scripts/stub_service.py`) persist speaker renames (both scopes) so the flow is verifiable without the real backend; previously all PATCHes were no-ops.

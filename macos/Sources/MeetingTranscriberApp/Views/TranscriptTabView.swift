@@ -106,7 +106,10 @@ struct TranscriptTabView: View {
             if !prefs.recentSpeakerNames.isEmpty {
                 Section("Recent") {
                     ForEach(prefs.recentSpeakerNames, id: \.self) { recent in
-                        Button(recent) { reassign(segment, to: recent) }
+                        // Prefill the sheet so a recent name still goes through the
+                        // scope choice (all segments vs this one) rather than an
+                        // instant single-segment rename.
+                        Button(recent) { customName = recent; renameScope = .allSegments; renaming = segment }
                     }
                 }
             }
