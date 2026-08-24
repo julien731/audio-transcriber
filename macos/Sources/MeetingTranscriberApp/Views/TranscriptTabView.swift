@@ -32,28 +32,36 @@ struct TranscriptTabView: View {
 
     var body: some View {
         ScrollViewReader { proxy in
-            ScrollView {
-                LazyVStack(alignment: .leading, spacing: 10) {
-                    ForEach(transcript.segments) { segment in
-                        segmentRow(segment)
-                            .id(segment.id)
+            // Transcript + speakers panel share one ScrollViewReader so the docked
+            // panel can drive `proxy.scrollTo` when a row is tapped (jump-to-speaker).
+            HStack(spacing: 0) {
+                ScrollView {
+                    LazyVStack(alignment: .leading, spacing: 10) {
+                        ForEach(transcript.segments) { segment in
+                            segmentRow(segment)
+                                .id(segment.id)
+                        }
                     }
+                    .padding(16)
                 }
-                .padding(16)
-            }
-            .onChange(of: activeSegmentId) { id in
-                guard let id else { return }
-                withAnimation { proxy.scrollTo(id, anchor: .center) }
-            }
-            .overlay(alignment: .topTrailing) { speakersToggle }
-            .overlay(alignment: .topTrailing) {
+                .frame(maxWidth: .infinity)
+                .onChange(of: activeSegmentId) { id in
+                    guard let id else { return }
+                    withAnimation { proxy.scrollTo(id, anchor: .center) }
+                }
+                .overlay(alignment: .topTrailing) { speakersToggle }
+
                 if showSpeakers {
-                    SpeakersPanelView(rows: speakerRows,
-                                      summary: SpeakerPanel.summary(for: speakerRows),
-                                      onSelect: { jump(to: $0, proxy: proxy) },
-                                      onClose: { showSpeakers = false })
-                        .padding(.trailing, 12).padding(.top, 56)
-                        .transition(.move(edge: .trailing).combined(with: .opacity))
+                    // Divider + panel animate as one docked unit sliding in from the trailing edge.
+                    HStack(spacing: 0) {
+                        Divider()
+                        SpeakersPanelView(rows: speakerRows,
+                                          summary: SpeakerPanel.summary(for: speakerRows),
+                                          onSelect: { jump(to: $0, proxy: proxy) },
+                                          onClose: { withAnimation(.easeInOut(duration: 0.18)) { showSpeakers = false } })
+                            .frame(width: 260)
+                    }
+                    .transition(.move(edge: .trailing).combined(with: .opacity))
                 }
             }
         }
@@ -189,7 +197,8 @@ struct TranscriptTabView: View {
 
 /// Speakers panel (story #121): lists each distinct speaker with their segment
 /// color and name; tapping a row cycles to that speaker's next passage. Jump only
-/// — renaming stays on the per-segment menu.
+/// — renaming stays on the per-segment menu. Docked as a full-height column beside
+/// the transcript; the caller owns the column width.
 private struct SpeakersPanelView: View {
     let rows: [SpeakerPanel.SpeakerRow]
     let summary: String
@@ -220,11 +229,8 @@ private struct SpeakersPanelView: View {
                 }
             }
         }
-        .frame(width: 240)
-        .frame(maxHeight: 360)
-        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(Color.primary.opacity(0.1)))
-        .shadow(color: .black.opacity(0.18), radius: 12, y: 4)
+        .frame(maxHeight: .infinity, alignment: .top)
+        .background(.regularMaterial)
     }
 
     private func rowLabel(_ row: SpeakerPanel.SpeakerRow) -> some View {
