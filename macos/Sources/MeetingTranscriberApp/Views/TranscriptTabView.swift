@@ -187,7 +187,7 @@ private struct SpeakersPanelView: View {
             }
         }
         .frame(maxHeight: .infinity, alignment: .top)
-        .background(.regularMaterial)
+        .background(Color.primary.opacity(0.03))
     }
 
     private func rowLabel(_ row: SpeakerPanel.SpeakerRow) -> some View {
