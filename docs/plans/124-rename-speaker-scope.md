@@ -59,4 +59,4 @@ Both save paths call `prefs.addRecentSpeakerName(trimmed)`.
 
 ## Deviations from Plan
 
-_Populated after implementation._
+- None. Implemented as planned. Adopted the two architect plan-review advisories folded into the plan: `.radioGroup` picker style and acknowledging the pre-existing `SpeakerEditorView`. Recent-name menu buttons kept single-segment per TD-3 (QA flagged the resulting web-parity divergence as non-blocking, for optional PM/design follow-up).
