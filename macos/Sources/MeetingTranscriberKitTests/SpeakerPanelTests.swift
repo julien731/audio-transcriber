@@ -57,4 +57,16 @@ func runSpeakerPanelTests() {
         // No resolvable segment → nil (no-op).
         expectNil(SpeakerPanel.nextSegmentId(for: "SPEAKER_99", in: segments, after: nil), "unknown speaker → nil")
     }
+
+    suite("SpeakerPanel.speakers renamingAll") {
+        let existing = ["SPEAKER_00": "Alice", "SPEAKER_01": "Bob"]
+        let overwrite = SpeakerPanel.speakers(renamingAll: "SPEAKER_00", to: "Alice Cooper", in: existing)
+        expectEqual(overwrite["SPEAKER_00"], "Alice Cooper", "target speaker overwritten")
+        expectEqual(overwrite["SPEAKER_01"], "Bob", "other speakers preserved")
+        let added = SpeakerPanel.speakers(renamingAll: "SPEAKER_02", to: "Carol", in: existing)
+        expectEqual(added["SPEAKER_02"], "Carol", "absent target added")
+        expectEqual(added.count, 3, "no entries dropped when adding")
+        let trimmed = SpeakerPanel.speakers(renamingAll: "SPEAKER_00", to: "  Dana  ", in: existing)
+        expectEqual(trimmed["SPEAKER_00"], "Dana", "name trimmed")
+    }
 }
