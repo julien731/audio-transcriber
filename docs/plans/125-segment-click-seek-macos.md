@@ -50,4 +50,9 @@ Keep `.textSelection(.enabled)` on the `Text` (click-drag selects; single click 
 
 ## Deviations from Plan
 
-_Populated after implementation._
+- Added a `.help("Jump to <timecode>")` tooltip on the segment row (not in the
+  original file list) — a small discoverability cue for the new click target.
+- AC3's tap-vs-selection-vs-menu interplay is not exercisable by the CLT-only test
+  harness (no XCUITest); verified by code inspection and left for a ~5-min manual
+  glance per the `docs/macos-app.md` checklist. No fallback narrowing of AC1 was
+  needed — the whole-row tap gesture worked as the primary path.
