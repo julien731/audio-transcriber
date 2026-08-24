@@ -15,10 +15,9 @@ struct TranscriptTabView: View {
 
     @State private var renaming: TranscriptSegment?
     @State private var customName = ""
-    /// Speakers panel (story #121): toggle + per-speaker cycle cursor. Each key is
-    /// a speaker id mapped to the last segment jumped to, so every speaker advances
-    /// through its own passages independently.
-    @State private var showSpeakers = false
+    /// Speakers panel (story #121): per-speaker cycle cursor. Each key is a speaker
+    /// id mapped to the last segment jumped to, so every speaker advances through
+    /// its own passages independently.
     @State private var cursors: [String: String] = [:]
     private let prefs = Preferences()
 
@@ -49,51 +48,18 @@ struct TranscriptTabView: View {
                     guard let id else { return }
                     withAnimation { proxy.scrollTo(id, anchor: .center) }
                 }
-                .overlay(alignment: .topTrailing) { speakersToggle }
 
-                if showSpeakers {
-                    // Divider + panel animate as one docked unit sliding in from the trailing edge.
-                    HStack(spacing: 0) {
-                        Divider()
-                        SpeakersPanelView(rows: speakerRows,
-                                          summary: SpeakerPanel.summary(for: speakerRows),
-                                          onSelect: { jump(to: $0, proxy: proxy) },
-                                          onClose: { withAnimation(.easeInOut(duration: 0.18)) { showSpeakers = false } })
-                            .frame(width: 260)
-                    }
-                    .transition(.move(edge: .trailing).combined(with: .opacity))
-                }
+                // Always-visible docked speakers column beside the transcript.
+                Divider()
+                SpeakersPanelView(rows: speakerRows,
+                                  summary: SpeakerPanel.summary(for: speakerRows),
+                                  onSelect: { jump(to: $0, proxy: proxy) })
+                    .frame(width: 260)
             }
         }
         .sheet(item: $renaming) { segment in
             renameSheet(segment)
         }
-    }
-
-    /// Floating toggle for the speakers panel; badges the unnamed-speaker count.
-    private var speakersToggle: some View {
-        let unnamed = speakerRows.filter(\.isUnnamed).count
-        return Button {
-            withAnimation(.easeInOut(duration: 0.18)) { showSpeakers.toggle() }
-        } label: {
-            Image(systemName: "person.2.fill")
-                .font(.system(size: 13, weight: .semibold))
-                .padding(9)
-                .background(showSpeakers ? Color.accentColor : Color.primary.opacity(0.08), in: Circle())
-                .foregroundStyle(showSpeakers ? .white : .primary)
-                .overlay(alignment: .topTrailing) {
-                    if unnamed > 0 {
-                        Text("\(unnamed)")
-                            .font(.system(size: 9, weight: .bold)).foregroundStyle(.white)
-                            .padding(3).background(.orange, in: Circle())
-                            .offset(x: 4, y: -4)
-                    }
-                }
-        }
-        .buttonStyle(.plain)
-        .help("Jump to speaker")
-        .accessibilityLabel("Jump to speaker")
-        .padding(.trailing, 12).padding(.top, 12)
     }
 
     /// Jump to a speaker's next passage, advancing that speaker's cursor. A no-op
@@ -203,20 +169,11 @@ private struct SpeakersPanelView: View {
     let rows: [SpeakerPanel.SpeakerRow]
     let summary: String
     let onSelect: (String) -> Void
-    let onClose: () -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            HStack {
-                Text("Speakers").font(.headline)
-                Spacer()
-                Button(action: onClose) {
-                    Image(systemName: "xmark").font(.system(size: 11, weight: .semibold))
-                }
-                .buttonStyle(.plain).foregroundStyle(.secondary)
-                .help("Close")
-            }
-            .padding(.horizontal, 12).padding(.vertical, 10)
+            Text("Speakers").font(.headline)
+                .padding(.horizontal, 12).padding(.top, 10).padding(.bottom, 2)
             Text(summary).font(.caption).foregroundStyle(.secondary)
                 .padding(.horizontal, 12).padding(.bottom, 8)
             Divider()
