@@ -1,7 +1,8 @@
 import SwiftUI
 import MeetingTranscriberKit
 
-/// Transcript segments synced to audio (BR-8): click a timecode to seek, the
+/// Transcript segments synced to audio (BR-8): click anywhere on a segment (or its
+/// timecode) to seek to that segment's exact start and play (story #125), the
 /// active segment highlights as playback advances, and each segment's speaker can
 /// be reassigned (single-segment scope — BR-7). Per-segment language badge shown
 /// when present.
@@ -105,6 +106,13 @@ struct TranscriptTabView: View {
         }
         .padding(10)
         .background(isActive ? color.opacity(0.12) : .clear, in: RoundedRectangle(cornerRadius: 8))
+        // Whole-row click-to-seek (story #125): jump audio to this segment's exact
+        // start and play, widening the web's per-segment "play from here" target.
+        // The speaker Menu and timecode Button own their hit-testing, so their taps
+        // don't seek; a click-drag on the text still selects (single click seeks).
+        .contentShape(Rectangle())
+        .onTapGesture { audio.seek(to: segment.start); audio.play() }
+        .help("Jump to \(Formatters.timecode(segment.start))")
     }
 
     private func speakerMenu(_ segment: TranscriptSegment, color: Color) -> some View {
@@ -137,8 +145,7 @@ struct TranscriptTabView: View {
     }
 
     private var activeSegmentId: String? {
-        let t = audio.currentTime
-        return transcript.segments.first { $0.start <= t && t < $0.end }?.id
+        TranscriptSync.activeSegmentId(at: audio.currentTime, in: transcript.segments)
     }
 
     /// Route a rename to the chosen scope (story #124).
