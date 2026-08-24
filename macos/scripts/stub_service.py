@@ -159,6 +159,55 @@ def _simulate_download() -> None:
         _state.update(download_state="completed", provisioning_completed=True, models_present=True)
 
 
+def _parse_json(raw: bytes) -> dict:
+    try:
+        parsed = json.loads(raw or b"{}")
+        return parsed if isinstance(parsed, dict) else {}
+    except json.JSONDecodeError:
+        return {}
+
+
+def _apply_meeting_update(raw: bytes) -> None:
+    """Persist a PATCH /api/meetings/{id} into the in-memory fixture so speaker
+    renames (all-segments scope) and title/type/context edits survive the GET
+    that follows. Mirrors backend.routers.meetings.update_meeting. Caller holds
+    _lock."""
+    body = _parse_json(raw)
+    metadata = DETAIL["metadata"]
+    for field in ("title", "type", "context"):
+        if body.get(field) is not None:
+            metadata[field] = body[field]
+    if body.get("speakers") is not None:
+        metadata["speakers"] = body["speakers"]
+
+
+def _apply_segment_speaker(raw: bytes) -> None:
+    """Persist a PATCH /api/meetings/{id}/segments/speaker (single-segment scope).
+    Mirrors backend.routers.meetings.update_segment_speaker: reuse an existing
+    speaker id when the name already maps, else mint a per-segment id. Caller
+    holds _lock."""
+    body = _parse_json(raw)
+    segment_id = body.get("segment_id")
+    new_name = (body.get("speaker_name") or "").strip()
+    if not segment_id or not new_name:
+        return
+    segment = next((s for s in DETAIL["transcript"]["segments"] if s["id"] == segment_id), None)
+    if segment is None:
+        return
+    speakers = DETAIL["metadata"]["speakers"]
+    normalized = new_name.casefold()
+    existing_id = next(
+        (sid for sid, name in speakers.items() if name.strip().casefold() == normalized),
+        None,
+    )
+    if existing_id is not None:
+        segment["speaker"] = existing_id
+        return
+    new_speaker_id = f"{segment['speaker']}_seg_{segment_id}"
+    segment["speaker"] = new_speaker_id
+    speakers[new_speaker_id] = new_name
+
+
 class Handler(BaseHTTPRequestHandler):
     def _send(self, status: int, payload: dict | list) -> None:
         """JSON responder."""
@@ -264,12 +313,16 @@ class Handler(BaseHTTPRequestHandler):
             self._send(404, {"detail": "Not found"})
 
     def do_PATCH(self) -> None:  # noqa: N802
-        self._drain_body()
+        raw = self._drain_body()
         path = urlsplit(self.path).path
         if path.startswith("/api/meetings/") and path.endswith("/segments/speaker"):
-            self._send(200, {})
+            with _lock:
+                _apply_segment_speaker(raw)
+                self._send(200, {})
         elif path.startswith("/api/meetings/"):
-            self._send(200, DETAIL["metadata"])
+            with _lock:
+                _apply_meeting_update(raw)
+                self._send(200, DETAIL["metadata"])
         else:
             self._send(404, {"detail": "Not found"})
 
