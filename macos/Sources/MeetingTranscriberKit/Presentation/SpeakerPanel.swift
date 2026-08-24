@@ -68,4 +68,19 @@ public enum SpeakerPanel {
         }
         return ids[(index + 1) % ids.count]
     }
+
+    /// Speakers map for the "all segments from this speaker" rename scope (story
+    /// #124): a copy of `existing` with `speakerId` mapped to the trimmed
+    /// `newName`, mirroring the web client's `speakers[speakerId] = newName`
+    /// (`speaker-editor.js:62`). Other entries are preserved; the target is added
+    /// when absent. The caller still guards against an empty name.
+    public static func speakers(
+        renamingAll speakerId: String,
+        to newName: String,
+        in existing: [String: String]
+    ) -> [String: String] {
+        var updated = existing
+        updated[speakerId] = newName.trimmingCharacters(in: .whitespaces)
+        return updated
+    }
 }

@@ -13,8 +13,11 @@ struct TranscriptTabView: View {
     @ObservedObject var audio: AudioPlaybackController
     var insights: [String: SegmentInsights.SegmentInsight] = [:]
 
-    @State private var renaming: TranscriptSegment?
-    @State private var customName = ""
+    /// Active rename target (story #124): the segment being renamed plus the name
+    /// to seed the sheet with (a recent name, or empty for a fresh rename). The
+    /// sheet owns the editable name + scope as local state, so seeding it here is
+    /// race-free — no stale `.disabled` on first render.
+    @State private var renameTarget: RenameTarget?
     /// Speakers panel (story #121): per-speaker cycle cursor. Each key is a speaker
     /// id mapped to the last segment jumped to, so every speaker advances through
     /// its own passages independently.
@@ -57,8 +60,15 @@ struct TranscriptTabView: View {
                     .frame(width: 260)
             }
         }
-        .sheet(item: $renaming) { segment in
-            renameSheet(segment)
+        .sheet(item: $renameTarget) { target in
+            RenameSpeakerSheet(
+                initialName: target.initialName,
+                onCancel: { renameTarget = nil },
+                onSave: { name, scope in
+                    save(target.segment, to: name, scope: scope)
+                    renameTarget = nil
+                }
+            )
         }
     }
 
@@ -103,11 +113,14 @@ struct TranscriptTabView: View {
             if !prefs.recentSpeakerNames.isEmpty {
                 Section("Recent") {
                     ForEach(prefs.recentSpeakerNames, id: \.self) { recent in
-                        Button(recent) { reassign(segment, to: recent) }
+                        // Prefill the sheet so a recent name still goes through the
+                        // scope choice (all segments vs this one) rather than an
+                        // instant single-segment rename.
+                        Button(recent) { renameTarget = RenameTarget(segment: segment, initialName: recent) }
                     }
                 }
             }
-            Button("Rename…") { customName = ""; renaming = segment }
+            Button("Rename…") { renameTarget = RenameTarget(segment: segment, initialName: "") }
         } label: {
             HStack(spacing: 5) {
                 Circle().fill(color).frame(width: 8, height: 8)
@@ -118,24 +131,6 @@ struct TranscriptTabView: View {
         .menuStyle(.borderlessButton).fixedSize()
     }
 
-    private func renameSheet(_ segment: TranscriptSegment) -> some View {
-        VStack(alignment: .leading, spacing: 16) {
-            Text("Rename speaker for this segment").font(.headline)
-            TextField("Name", text: $customName).textFieldStyle(.roundedBorder).frame(width: 260)
-            HStack {
-                Button("Cancel") { renaming = nil }
-                Spacer()
-                Button("Save") {
-                    reassign(segment, to: customName)
-                    renaming = nil
-                }
-                .keyboardShortcut(.defaultAction)
-                .disabled(customName.trimmingCharacters(in: .whitespaces).isEmpty)
-            }
-        }
-        .padding(20).frame(width: 320)
-    }
-
     private func languageBadge(_ segment: TranscriptSegment) -> String? {
         guard let code = segment.language ?? (language.isEmpty ? nil : language), code != "auto" else { return nil }
         return Languages.name(for: code)
@@ -144,6 +139,14 @@ struct TranscriptTabView: View {
     private var activeSegmentId: String? {
         let t = audio.currentTime
         return transcript.segments.first { $0.start <= t && t < $0.end }?.id
+    }
+
+    /// Route a rename to the chosen scope (story #124).
+    private func save(_ segment: TranscriptSegment, to name: String, scope: RenameScope) {
+        switch scope {
+        case .allSegments: renameAllSegments(segment, to: name)
+        case .thisSegment: reassign(segment, to: name)
+        }
     }
 
     private func reassign(_ segment: TranscriptSegment, to name: String) {
@@ -158,6 +161,85 @@ struct TranscriptTabView: View {
                 store.setError((error as? APIError)?.userMessage ?? "Could not rename the speaker.")
             }
         }
+    }
+
+    /// Rename every segment attributed to the segment's speaker by PATCHing the
+    /// meeting's speakers map (mirrors the web "all segments" scope).
+    private func renameAllSegments(_ segment: TranscriptSegment, to name: String) {
+        let trimmed = name.trimmingCharacters(in: .whitespaces)
+        guard !trimmed.isEmpty else { return }
+        let updated = SpeakerPanel.speakers(renamingAll: segment.speaker, to: trimmed, in: speakers)
+        Task {
+            do {
+                _ = try await store.client.updateMeeting(id: store.meetingId, update: MeetingUpdate(speakers: updated))
+                prefs.addRecentSpeakerName(trimmed)
+                await store.reloadDetail()
+            } catch {
+                store.setError((error as? APIError)?.userMessage ?? "Could not rename the speaker.")
+            }
+        }
+    }
+}
+
+/// Scope for a speaker rename (story #124): all of a speaker's segments, or just
+/// the selected one.
+private enum RenameScope: CaseIterable {
+    case allSegments
+    case thisSegment
+
+    var label: String {
+        switch self {
+        case .allSegments: return "All segments from this speaker"
+        case .thisSegment: return "This segment only"
+        }
+    }
+}
+
+/// Identifies the segment being renamed and the name to seed the sheet with.
+private struct RenameTarget: Identifiable {
+    let segment: TranscriptSegment
+    let initialName: String
+    var id: String { segment.id }
+}
+
+/// Rename sheet (story #124). Owns the editable name + scope as local state so it
+/// is seeded once at presentation — a prefilled recent name enables Save on the
+/// first render, with no stale-`.disabled` race from setting parent state
+/// alongside sheet presentation.
+private struct RenameSpeakerSheet: View {
+    let initialName: String
+    let onCancel: () -> Void
+    let onSave: (String, RenameScope) -> Void
+
+    @State private var name: String
+    @State private var scope: RenameScope = .allSegments
+
+    init(initialName: String, onCancel: @escaping () -> Void, onSave: @escaping (String, RenameScope) -> Void) {
+        self.initialName = initialName
+        self.onCancel = onCancel
+        self.onSave = onSave
+        _name = State(initialValue: initialName)
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Text("Rename speaker").font(.headline)
+            TextField("Name", text: $name).textFieldStyle(.roundedBorder).frame(width: 260)
+            Picker("Apply to", selection: $scope) {
+                ForEach(RenameScope.allCases, id: \.self) { option in
+                    Text(option.label).tag(option)
+                }
+            }
+            .pickerStyle(.radioGroup)
+            HStack {
+                Button("Cancel") { onCancel() }
+                Spacer()
+                Button("Save") { onSave(name, scope) }
+                    .keyboardShortcut(.defaultAction)
+                    .disabled(name.trimmingCharacters(in: .whitespaces).isEmpty)
+            }
+        }
+        .padding(20).frame(width: 320)
     }
 }
 
