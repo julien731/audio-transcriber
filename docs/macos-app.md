@@ -246,8 +246,9 @@ published version). Re-run the failed job (preserves the version), or re-invoke
 - [ ] Setup wizard: enter a token → models download → main UI; and: skip / bad
       token → generic failure → Continue without diarization completes (BR-13).
 - [ ] Upload a recording → progress → transcript appears automatically (BR-9).
-- [ ] Transcript: audio plays, active segment highlights, click a timecode seeks,
-      change playback speed.
+- [ ] Transcript: audio plays, active segment highlights, clicking anywhere on a
+      segment (or its timecode) seeks to that segment's exact start, change
+      playback speed.
 - [ ] Rename a speaker (single segment and meeting-wide); recent names appear.
 - [ ] Overview: trajectory + interruptions + latency render; opted-out and
       unavailable states render.
