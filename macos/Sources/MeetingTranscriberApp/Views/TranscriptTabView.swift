@@ -15,6 +15,9 @@ struct TranscriptTabView: View {
 
     @State private var renaming: TranscriptSegment?
     @State private var customName = ""
+    /// Rename scope (story #124): whether Save renames every segment from the
+    /// speaker or just this one. Defaults to all segments, matching the web client.
+    @State private var renameScope: RenameScope = .allSegments
     /// Speakers panel (story #121): per-speaker cycle cursor. Each key is a speaker
     /// id mapped to the last segment jumped to, so every speaker advances through
     /// its own passages independently.
@@ -107,7 +110,7 @@ struct TranscriptTabView: View {
                     }
                 }
             }
-            Button("Rename…") { customName = ""; renaming = segment }
+            Button("Rename…") { customName = ""; renameScope = .allSegments; renaming = segment }
         } label: {
             HStack(spacing: 5) {
                 Circle().fill(color).frame(width: 8, height: 8)
@@ -120,13 +123,19 @@ struct TranscriptTabView: View {
 
     private func renameSheet(_ segment: TranscriptSegment) -> some View {
         VStack(alignment: .leading, spacing: 16) {
-            Text("Rename speaker for this segment").font(.headline)
+            Text("Rename speaker").font(.headline)
             TextField("Name", text: $customName).textFieldStyle(.roundedBorder).frame(width: 260)
+            Picker("Apply to", selection: $renameScope) {
+                ForEach(RenameScope.allCases, id: \.self) { scope in
+                    Text(scope.label).tag(scope)
+                }
+            }
+            .pickerStyle(.radioGroup)
             HStack {
                 Button("Cancel") { renaming = nil }
                 Spacer()
                 Button("Save") {
-                    reassign(segment, to: customName)
+                    save(segment, to: customName, scope: renameScope)
                     renaming = nil
                 }
                 .keyboardShortcut(.defaultAction)
@@ -146,6 +155,14 @@ struct TranscriptTabView: View {
         return transcript.segments.first { $0.start <= t && t < $0.end }?.id
     }
 
+    /// Route a rename to the chosen scope (story #124).
+    private func save(_ segment: TranscriptSegment, to name: String, scope: RenameScope) {
+        switch scope {
+        case .allSegments: renameAllSegments(segment, to: name)
+        case .thisSegment: reassign(segment, to: name)
+        }
+    }
+
     private func reassign(_ segment: TranscriptSegment, to name: String) {
         let trimmed = name.trimmingCharacters(in: .whitespaces)
         guard !trimmed.isEmpty else { return }
@@ -157,6 +174,37 @@ struct TranscriptTabView: View {
             } catch {
                 store.setError((error as? APIError)?.userMessage ?? "Could not rename the speaker.")
             }
+        }
+    }
+
+    /// Rename every segment attributed to the segment's speaker by PATCHing the
+    /// meeting's speakers map (mirrors the web "all segments" scope).
+    private func renameAllSegments(_ segment: TranscriptSegment, to name: String) {
+        let trimmed = name.trimmingCharacters(in: .whitespaces)
+        guard !trimmed.isEmpty else { return }
+        let updated = SpeakerPanel.speakers(renamingAll: segment.speaker, to: trimmed, in: speakers)
+        Task {
+            do {
+                _ = try await store.client.updateMeeting(id: store.meetingId, update: MeetingUpdate(speakers: updated))
+                prefs.addRecentSpeakerName(trimmed)
+                await store.reloadDetail()
+            } catch {
+                store.setError((error as? APIError)?.userMessage ?? "Could not rename the speaker.")
+            }
+        }
+    }
+}
+
+/// Scope for a speaker rename (story #124): all of a speaker's segments, or just
+/// the selected one.
+private enum RenameScope: CaseIterable {
+    case allSegments
+    case thisSegment
+
+    var label: String {
+        switch self {
+        case .allSegments: return "All segments from this speaker"
+        case .thisSegment: return "This segment only"
         }
     }
 }
