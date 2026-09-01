@@ -19,6 +19,11 @@ public enum APIError: Error, Equatable {
     case decoding(String)
     /// Transport failure (offline, connection refused).
     case transport(String)
+    /// Request exceeded its timeout. Emitted transiently while a CPU-bound local
+    /// transcription saturates the machine and starves the service's event loop;
+    /// `MeetingsStore` treats it as non-fatal so a background refresh doesn't raise
+    /// a false alarm (issue #133).
+    case timedOut
 
     /// A human-readable message suitable for a toast/inline error.
     public var userMessage: String {
@@ -31,6 +36,8 @@ public enum APIError: Error, Equatable {
             return "The service returned an unexpected response."
         case let .transport(m):
             return m
+        case .timedOut:
+            return "The request timed out."
         }
     }
 }

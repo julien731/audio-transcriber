@@ -8,6 +8,9 @@ final class MockURLProtocol: URLProtocol {
     struct Stub {
         let status: Int
         let body: Data
+        /// When set, the request fails via `didFailWithError` instead of returning
+        /// a response — lets tests exercise transport failures (e.g. timeouts).
+        var error: URLError? = nil
     }
 
     /// (request, capturedBody) -> Stub. Set before each test.
@@ -28,6 +31,10 @@ final class MockURLProtocol: URLProtocol {
             return
         }
         let stub = handler(request, body)
+        if let error = stub.error {
+            client?.urlProtocol(self, didFailWithError: error)
+            return
+        }
         let response = HTTPURLResponse(
             url: request.url!,
             statusCode: stub.status,

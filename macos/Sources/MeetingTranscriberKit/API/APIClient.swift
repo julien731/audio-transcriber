@@ -9,10 +9,23 @@ public final class APIClient {
     private let decoder = JSONCoding.makeDecoder()
     private let encoder = JSONCoding.makeEncoder()
 
-    public init(baseURL: URL, session: URLSession = .shared) {
+    public init(baseURL: URL, session: URLSession = APIClient.defaultSession) {
         self.baseURL = baseURL
         self.session = session
     }
+
+    /// The service is a local process doing CPU-bound transcription: a heavy
+    /// compute burst can starve its event loop for tens of seconds, so the stock
+    /// 60s per-request timeout produces false "request timed out" alarms on
+    /// background refreshes (issue #133). 120s clears those bursts (the timer
+    /// resets on the first received byte) while a genuinely hung service still
+    /// errors within ~2 minutes. Launch reachability is unaffected — `HealthClient`
+    /// keeps its own short probe.
+    public static let defaultSession: URLSession = {
+        let config = URLSessionConfiguration.default
+        config.timeoutIntervalForRequest = 120
+        return URLSession(configuration: config)
+    }()
 
     // MARK: Meetings
 
@@ -126,7 +139,7 @@ public final class APIClient {
         do {
             (data, response) = try await session.data(for: request)
         } catch {
-            throw APIError.transport(Self.transportMessage(error))
+            throw Self.mapTransport(error)
         }
         guard let http = response as? HTTPURLResponse else {
             throw APIError.transport("The service returned no HTTP response.")
@@ -166,6 +179,18 @@ public final class APIClient {
             let detail = object["detail"] as? String
         else { return "" }
         return detail
+    }
+
+    /// Classify a URL-loading failure. A timeout becomes the dedicated
+    /// `.timedOut` case (matched on `NSURLErrorDomain`/`NSURLErrorTimedOut` rather
+    /// than the locale-dependent message) so callers can treat it non-fatally;
+    /// everything else keeps the human-readable transport message.
+    static func mapTransport(_ error: Error) -> APIError {
+        let nsError = error as NSError
+        if nsError.domain == NSURLErrorDomain, nsError.code == NSURLErrorTimedOut {
+            return .timedOut
+        }
+        return .transport(transportMessage(error))
     }
 
     private static func transportMessage(_ error: Error) -> String {
