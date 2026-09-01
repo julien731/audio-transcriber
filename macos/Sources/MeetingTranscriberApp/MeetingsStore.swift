@@ -25,6 +25,11 @@ final class MeetingsStore: ObservableObject {
             BusyState.shared.set(active: QuitPolicy.needsConfirmation(meetings: meetings))
             errorMessage = nil
         } catch {
+            // A background refresh can time out while a local transcription
+            // saturates the machine; that's transient — keep the cached list and
+            // stay silent rather than raising a false alarm (issue #133). The next
+            // refresh recovers.
+            if (error as? APIError) == .timedOut { return }
             errorMessage = Self.message(for: error)
         }
     }
