@@ -24,11 +24,22 @@ struct UploadView: View {
     @State private var submitting = false
     @State private var importing = false
     @State private var isDropTargeted = false
+    /// nil while the availability check is in flight or has failed — we render no
+    /// warning in that case to avoid a false alarm.
+    @State private var diarizationAvailable: Bool?
+    @State private var showingSettings = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             Text("New Meeting").font(.title2.weight(.semibold)).padding([.top, .horizontal], 20)
             Form {
+                if diarizationAvailable == false {
+                    Section {
+                        diarizationWarning
+                            .listRowInsets(EdgeInsets())
+                            .listRowBackground(Color.clear)
+                    }
+                }
                 Section {
                     dropZone
                         .listRowInsets(EdgeInsets())
@@ -75,6 +86,39 @@ struct UploadView: View {
                       allowsMultipleSelection: false) { result in
             handleImport(result)
         }
+        .task { await refreshDiarization() }
+        // Nested over this upload sheet (macOS 13-compatible; no SettingsLink).
+        // Re-check on dismissal so the warning clears once a token is added.
+        .sheet(isPresented: $showingSettings, onDismiss: { Task { await refreshDiarization() } }) {
+            SettingsSheet(client: client) { showingSettings = false }
+        }
+    }
+
+    /// Callout shown when speaker diarization is disabled (no HuggingFace token),
+    /// so the user isn't surprised by a single-speaker transcript. Links to the
+    /// Settings sheet where the token is set.
+    private var diarizationWarning: some View {
+        HStack(alignment: .top, spacing: 10) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .foregroundStyle(.orange)
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Speaker diarization is disabled").font(.callout.weight(.semibold))
+                Text("This meeting will be transcribed as a single speaker. Add a HuggingFace token in Settings to separate speakers.")
+                    .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                Button("Open Settings…") { showingSettings = true }
+                    .buttonStyle(.link)
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(12)
+        .background(Color.orange.opacity(0.1), in: RoundedRectangle(cornerRadius: 10))
+    }
+
+    /// Read the current diarization availability from provisioning (the same
+    /// signal Settings uses). A failed read leaves the state nil so no warning is
+    /// shown rather than a spurious one.
+    private func refreshDiarization() async {
+        diarizationAvailable = try? await client.provisioning().diarizationAvailable
     }
 
     /// Drag-and-drop target that mirrors the "Choose Audio File…" picker. Dropping a
