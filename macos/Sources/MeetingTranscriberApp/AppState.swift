@@ -23,12 +23,19 @@ final class AppState: ObservableObject {
         return nil
     }
 
-    private var supervisor = ServiceSupervisor()
+    /// Captures the child service's raw stdout/stderr for diagnostics (story #137);
+    /// shared across supervisor generations so all output lands in one file.
+    private let serviceLog = FileLog(fileName: "service-stderr.log")
+    private var supervisor: ServiceSupervisor
     private let nonce = UUID().uuidString
     /// Bumped on every start()/restart(). An in-flight launch only mutates state
     /// or keeps its child if it is still the current generation — so a superseded
     /// launch can't orphan a process or overwrite the fresh app state.
     private var launchGeneration = 0
+
+    init() {
+        supervisor = ServiceSupervisor(stderrLog: serviceLog)
+    }
 
     // MARK: Launch
 
@@ -42,11 +49,13 @@ final class AppState: ObservableObject {
         // orphan and interfere with the replacement.
         let previous = supervisor
         previous.onUnexpectedTermination = nil
-        supervisor = ServiceSupervisor()
+        supervisor = ServiceSupervisor(stderrLog: serviceLog)
         if previous.isRunning { Task.detached { previous.terminate() } }
 
+        AppLog.info("Starting transcription service (launch generation \(generation))")
         phase = .starting
         supervisor.onUnexpectedTermination = { [weak self] status in
+            AppLog.error("Transcription service exited unexpectedly (status \(status))")
             Task { @MainActor in
                 guard let self, self.launchGeneration == generation else { return }
                 self.phase = .serviceFailed("The transcription service exited unexpectedly (status \(status)). Restart to continue.")
@@ -73,6 +82,7 @@ final class AppState: ObservableObject {
                 guard await HealthClient.waitUntilReady(baseURL: baseURL, timeout: 240) else {
                     // The child never served HTTP — terminate it so it can't linger.
                     await Task.detached { supervisor.terminate() }.value
+                    AppLog.error("Transcription service started but never became ready")
                     if self.launchGeneration == generation {
                         self.phase = .serviceFailed("The service started but never became ready.")
                     }
@@ -82,10 +92,12 @@ final class AppState: ObservableObject {
                     await Task.detached { supervisor.terminate() }.value
                     return
                 }
+                AppLog.info("Transcription service ready on port \(port)")
                 await self.routeAfterReady(baseURL: baseURL, generation: generation)
             } catch {
                 // Kill any child left by a failed start (no-op if already gone).
                 await Task.detached { supervisor.terminate() }.value
+                AppLog.error("Transcription service failed to start: \(Self.describe(error))")
                 if self.launchGeneration == generation {
                     self.phase = .serviceFailed(Self.describe(error))
                 }
@@ -123,6 +135,7 @@ final class AppState: ObservableObject {
     /// if it still identifies our child (finding #5).
     func shutdown() {
         let pid = supervisor.processIdentifier
+        AppLog.info("App shutting down; terminating transcription service (pid \(pid))")
         // Deliberate shutdown: silence the crash handler so it can't flip the
         // phase to .serviceFailed for an intentional termination.
         supervisor.onUnexpectedTermination = nil

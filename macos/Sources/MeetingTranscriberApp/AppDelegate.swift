@@ -11,6 +11,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     let updater = UpdaterController()
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        AppLog.info("Application launched")
         appState.start()
     }
 
@@ -43,6 +44,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             alert.addButton(withTitle: "Quit Anyway")
             alert.addButton(withTitle: "Cancel")
             let quit = alert.runModal() == .alertFirstButtonReturn
+            AppLog.info("Quit requested with active transcription; user chose to \(quit ? "quit" : "cancel")")
             sender.reply(toApplicationShouldTerminate: quit)
         }
         return .terminateLater
