@@ -32,6 +32,10 @@ public enum AppLog {
     }
 
     private static func line(_ level: String, _ message: String) -> String {
-        "\(ISO8601DateFormatter().string(from: Date())) \(level) app: \(message)"
+        // app.log is bundled into the diagnostics export; redact as
+        // defense-in-depth even though these are Swift-authored breadcrumbs that
+        // never interpolate tokens today (story #139).
+        let safe = SecretRedaction.redact(message)
+        return "\(ISO8601DateFormatter().string(from: Date())) \(level) app: \(safe)"
     }
 }

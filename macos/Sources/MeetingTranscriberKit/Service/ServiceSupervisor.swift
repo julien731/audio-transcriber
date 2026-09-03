@@ -167,7 +167,18 @@ public final class ServiceSupervisor {
             while true {
                 let chunk = handle.availableData
                 if chunk.isEmpty { break } // EOF
-                if matched || teeBeforeMatch { self?.stderrLog?.write(chunk) }
+                // Redact secrets before teeing: this raw child output bypasses
+                // Python's logging redaction, and the file is bundled into the
+                // shareable diagnostics zip (story #139). This single write site
+                // serves both the stderr tee and the post-handshake stdout tee.
+                // Per-chunk redaction accepts one boundary limitation: a token
+                // split across two availableData reads could evade masking.
+                if matched || teeBeforeMatch {
+                    let redacted = SecretRedaction.redact(
+                        String(decoding: chunk, as: UTF8.self)
+                    )
+                    self?.stderrLog?.write(Data(redacted.utf8))
+                }
                 if matched { continue } // keep draining + teeing, stop parsing
                 buffer.append(chunk)
                 while let newline = buffer.firstIndex(of: 0x0A) {
