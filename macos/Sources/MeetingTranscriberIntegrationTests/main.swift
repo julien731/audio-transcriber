@@ -132,10 +132,60 @@ func scenarioNonceMismatch() {
     check(!supervisor.isRunning, "nonce: child terminated after rejection")
 }
 
+// MARK: - Scenario 5: post-handshake output flood must not deadlock (story #137)
+
+func scenarioPostHandshakeFloodDoesNotBlock() {
+    // Regression for the pipe-drain deadlock: after the handshake the child writes
+    // far more than the ~64KB OS pipe buffer to BOTH stderr and stdout, then
+    // touches a sentinel file. If the supervisor stopped draining (the old bug),
+    // the child blocks on write() and never reaches the sentinel.
+    let tmp = FileManager.default.temporaryDirectory
+        .appendingPathComponent("supervisor-flood-\(UUID().uuidString)", isDirectory: true)
+    try? FileManager.default.createDirectory(at: tmp, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: tmp) }
+    let sentinel = tmp.appendingPathComponent("done.txt")
+
+    let nonce = UUID().uuidString
+    let code = """
+    import json, os, sys, time
+    print(json.dumps({"event": "ready", "port": 45999, "nonce": os.environ.get("MT_SERVICE_NONCE", "")}), flush=True)
+    big = "x" * (200 * 1024)  # 200 KB — well over the 64KB pipe buffer
+    sys.stderr.write(big); sys.stderr.flush()
+    sys.stdout.write(big); sys.stdout.flush()
+    with open(r"\(sentinel.path)", "w") as fh:
+        fh.write("done")
+    time.sleep(30)
+    """
+
+    let stderrLog = FileLog(fileName: "service-stderr.log", directory: tmp)
+    let supervisor = ServiceSupervisor(stderrLog: stderrLog)
+    do {
+        let port = try supervisor.start(python(code, nonce: nonce), timeout: 10)
+        check(port == 45999, "flood: handshake parsed (got \(port))")
+
+        // The child reaches the sentinel only if both pipes kept draining.
+        let deadline = Date().addingTimeInterval(5)
+        while !FileManager.default.fileExists(atPath: sentinel.path), Date() < deadline {
+            Thread.sleep(forTimeInterval: 0.05)
+        }
+        check(FileManager.default.fileExists(atPath: sentinel.path),
+              "flood: child finished writing >64KB to both pipes without blocking")
+
+        stderrLog.flush()
+        let size = ((try? FileManager.default.attributesOfItem(atPath: stderrLog.url.path))?[.size] as? NSNumber)?.intValue ?? 0
+        check(size >= 200 * 1024, "flood: child output teed to service-stderr.log (size \(size))")
+    } catch {
+        check(false, "flood: start threw \(error)")
+    }
+    supervisor.terminate(gracePeriod: 2)
+    check(!supervisor.isRunning, "flood: child terminated")
+}
+
 await scenarioStubService()
 scenarioNoisyStdout()
 scenarioSigkillEscalation()
 scenarioNonceMismatch()
+scenarioPostHandshakeFloodDoesNotBlock()
 
 let summary = "\n\(passed) passed, \(failed) failed\n"
 FileHandle.standardOutput.write(Data(summary.utf8))
