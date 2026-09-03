@@ -54,6 +54,18 @@ def app_support_dir() -> Path:
     return base
 
 
+def logs_dir() -> Path:
+    """User-writable directory for service + app log files (story #137).
+
+    Lives under the Application Support base so it is redirected by the same
+    ``_APP_SUPPORT_OVERRIDE`` test hook (and the ``_isolate_app_support``
+    fixture), keeping tests off the real home directory. Created on access.
+    """
+    directory = app_support_dir() / "Logs"
+    directory.mkdir(parents=True, exist_ok=True)
+    return directory
+
+
 def ffmpeg_path() -> str | None:
     """Resolve the ffmpeg executable, preferring the bundled binary (BR-3, BR-20).
 
