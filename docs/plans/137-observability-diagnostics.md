@@ -77,4 +77,8 @@ Help menu → reveal `Logs/` in Finder; "Export Diagnostics…" → NSSavePanel 
 
 ## Deviations from Plan
 
-_Populated after implementation._
+- `AppState` gained an explicit `init()` to inject the shared `serviceLog` into every supervisor generation — a stored-property default value can't reference another instance property, so the planned default-arg injection alone was insufficient.
+- Added `DiagnosticsExporterTests` (Kit) beyond the drafted test list, exercising the now-pure exporter (zip created, non-empty, overwrite, summary header).
+- Added `FileLog.flush()` (blocks until the serial queue drains) so tests and the export are deterministic.
+- stdout is teed only *after* the handshake match (`teeBeforeMatch: false`) to skip the handshake JSON line; stderr is teed from the first byte (`teeBeforeMatch: true`) to capture startup failures. Both drain to EOF regardless.
+- Help menu uses `CommandGroup(replacing: .help)` (the default "Help" item has no help book, so replacing it is cleaner than appending).
