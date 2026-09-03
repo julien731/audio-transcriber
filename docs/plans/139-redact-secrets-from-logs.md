@@ -66,4 +66,5 @@ Python on-disk test as automated coverage; documented manual check in the PR (se
 
 ## Deviations from Plan
 
-_Populated after implementation._
+- The fail-open test (`test_filter_neutralizes_malformed_format_record`) exercises `SecretRedactingFilter.filter()` directly rather than through the logging pipeline: pytest's own capture handler re-raises a malformed-`%`-args record independent of our filter, so a full-pipeline test could not isolate our filter's behavior. The filter now also drops `record.args` when `getMessage()` raises, so no downstream formatter can raise either.
+- The Swift redactor also covers `app.log` (via `AppLog.line`), not only the `service-stderr.log` tee — near-free defense-in-depth for the third bundled sink.
