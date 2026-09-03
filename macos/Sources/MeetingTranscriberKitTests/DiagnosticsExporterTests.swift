@@ -35,5 +35,36 @@ func runDiagnosticsExporterTests() {
         // Summary carries the identifying header.
         expect(DiagnosticsExporter.summary().contains("MeetingTranscriber diagnostics"),
                "summary has header")
+
+        // AC5 (story #139): a token that passed through the redacting write path
+        // must be absent from the exported zip. Seed a log the way the stderr tee
+        // would write it (raw child output run through SecretRedaction.redact),
+        // export, extract, and grep the extracted tree for the raw token.
+        let seededToken = "hf_TESTTOKEN0123456789abcdef"
+        let teed = SecretRedaction.redact("Traceback: 401 Unauthorized for \(seededToken)\n")
+        try? Data(teed.utf8).write(to: logs.appendingPathComponent("service-stderr.log"))
+
+        let secretDest = tmp.appendingPathComponent("diag-secret.zip")
+        do {
+            try DiagnosticsExporter.exportDiagnostics(to: secretDest, logsDirectory: logs)
+        } catch {
+            expect(false, "secret export threw \(error)")
+        }
+
+        let extracted = tmp.appendingPathComponent("extracted-\(UUID().uuidString)", isDirectory: true)
+        let ditto = Process()
+        ditto.executableURL = URL(fileURLWithPath: "/usr/bin/ditto")
+        ditto.arguments = ["-x", "-k", secretDest.path, extracted.path]
+        try? ditto.run()
+        ditto.waitUntilExit()
+
+        var zipBody = ""
+        if let files = FileManager.default.enumerator(at: extracted, includingPropertiesForKeys: nil) {
+            for case let url as URL in files {
+                zipBody += (try? String(contentsOf: url, encoding: .utf8)) ?? ""
+            }
+        }
+        expect(!zipBody.contains(seededToken), "exported zip is free of the seeded token")
+        expect(zipBody.contains("hf_***"), "exported zip carries the redacted placeholder")
     }
 }

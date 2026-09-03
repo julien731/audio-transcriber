@@ -181,11 +181,57 @@ func scenarioPostHandshakeFloodDoesNotBlock() {
     check(!supervisor.isRunning, "flood: child terminated")
 }
 
+// MARK: - Scenario 6: secrets in child stderr are redacted in the tee (story #139)
+
+func scenarioStderrTokenIsRedacted() {
+    // The child prints an hf_ token to stderr (as a third-party dep might in a
+    // traceback). The supervisor's tee must write the placeholder, not the token,
+    // to service-stderr.log — the file bundled into the diagnostics export. This
+    // drives the real drainAndTee → SecretRedaction seam end-to-end.
+    let tmp = FileManager.default.temporaryDirectory
+        .appendingPathComponent("supervisor-redact-\(UUID().uuidString)", isDirectory: true)
+    try? FileManager.default.createDirectory(at: tmp, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: tmp) }
+
+    let token = "hf_TESTTOKEN0123456789abcdef"
+    let nonce = UUID().uuidString
+    let code = """
+    import json, os, sys, time
+    print(json.dumps({"event": "ready", "port": 45998, "nonce": os.environ.get("MT_SERVICE_NONCE", "")}), flush=True)
+    sys.stderr.write("401 Unauthorized for \(token)\\n"); sys.stderr.flush()
+    time.sleep(30)
+    """
+
+    let stderrLog = FileLog(fileName: "service-stderr.log", directory: tmp)
+    let supervisor = ServiceSupervisor(stderrLog: stderrLog)
+    do {
+        let port = try supervisor.start(python(code, nonce: nonce), timeout: 10)
+        check(port == 45998, "redact: handshake parsed (got \(port))")
+
+        // Give the tee a moment to drain the stderr line, then flush.
+        let deadline = Date().addingTimeInterval(5)
+        var body = ""
+        repeat {
+            stderrLog.flush()
+            body = (try? String(contentsOf: stderrLog.url, encoding: .utf8)) ?? ""
+            if body.contains("hf_***") { break }
+            Thread.sleep(forTimeInterval: 0.05)
+        } while Date() < deadline
+        check(!body.contains(token), "redact: token absent from service-stderr.log")
+        check(body.contains("hf_***"), "redact: placeholder written to service-stderr.log")
+    } catch {
+        check(false, "redact: start threw \(error)")
+    }
+    supervisor.terminate(gracePeriod: 2)
+    check(!supervisor.isRunning, "redact: child terminated")
+}
+
 await scenarioStubService()
 scenarioNoisyStdout()
 scenarioSigkillEscalation()
 scenarioNonceMismatch()
 scenarioPostHandshakeFloodDoesNotBlock()
+scenarioStderrTokenIsRedacted()
 
 let summary = "\n\(passed) passed, \(failed) failed\n"
 FileHandle.standardOutput.write(Data(summary.utf8))
