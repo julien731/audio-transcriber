@@ -1,5 +1,6 @@
 import AppKit
 import MeetingTranscriberKit
+import UniformTypeIdentifiers
 
 /// App lifecycle for the background-run model (plan TD-5/TD-6):
 /// - closing the window does NOT quit the app (a transcription may be running);
@@ -11,6 +12,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     let updater = UpdaterController()
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        AppLog.info("Application launched")
         appState.start()
     }
 
@@ -43,6 +45,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             alert.addButton(withTitle: "Quit Anyway")
             alert.addButton(withTitle: "Cancel")
             let quit = alert.runModal() == .alertFirstButtonReturn
+            AppLog.info("Quit requested with active transcription; user chose to \(quit ? "quit" : "cancel")")
             sender.reply(toApplicationShouldTerminate: quit)
         }
         return .terminateLater
@@ -50,5 +53,43 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationWillTerminate(_ notification: Notification) {
         appState.shutdown()
+    }
+
+    // MARK: - Diagnostics (Help menu, story #137)
+
+    /// Open the Logs directory in Finder so the user can inspect or drag the files.
+    func revealLogs() {
+        NSWorkspace.shared.activateFileViewerSelecting([FileLog.logsDirectory()])
+    }
+
+    /// Save panel → zip the logs + a system summary → reveal the archive. Kit's
+    /// DiagnosticsExporter does the packaging; presentation stays in the App layer.
+    func exportDiagnostics() {
+        AppLog.info("Exporting diagnostics")
+        AppLog.flush()
+
+        let panel = NSSavePanel()
+        panel.nameFieldStringValue = "MeetingTranscriber-Diagnostics-\(Self.exportTimestamp()).zip"
+        panel.allowedContentTypes = [.zip]
+        panel.canCreateDirectories = true
+        guard panel.runModal() == .OK, let destination = panel.url else { return }
+
+        do {
+            try DiagnosticsExporter.exportDiagnostics(to: destination)
+            NSWorkspace.shared.activateFileViewerSelecting([destination])
+        } catch {
+            AppLog.error("Diagnostics export failed: \(error)")
+            let alert = NSAlert()
+            alert.messageText = "Export Failed"
+            alert.informativeText = "Could not create the diagnostics archive."
+            alert.alertStyle = .warning
+            alert.runModal()
+        }
+    }
+
+    private static func exportTimestamp() -> String {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyyMMdd-HHmmss"
+        return formatter.string(from: Date())
     }
 }

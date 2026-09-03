@@ -104,7 +104,13 @@ def main() -> int:
     # object straight to uvicorn.
     from backend.main import app
 
-    config = uvicorn.Config(app, reload=False, log_level="info")
+    # Route logging to a rotating file (story #137) and pass log_config=None so
+    # uvicorn does not reset logging — its loggers then propagate to our root
+    # handler. Configured here (after the handshake) so startup stays fast.
+    from backend.services.logging_setup import configure_service_logging
+
+    configure_service_logging()
+    config = uvicorn.Config(app, reload=False, log_config=None)
     server = uvicorn.Server(config)
     server.run(sockets=[sock])
     return 0

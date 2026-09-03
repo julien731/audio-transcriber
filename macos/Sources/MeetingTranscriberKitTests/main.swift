@@ -15,6 +15,8 @@ runTranscriptSyncTests()
 runPreferencesTests()
 runPlainTextRendererTests()
 runOverviewAggregationsTests()
+runFileLogTests()
+runDiagnosticsExporterTests()
 
 // (unnamed-speaker suite runs inside runSpeakerColorTests)
 TestRunner.shared.finish()

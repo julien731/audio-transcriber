@@ -34,10 +34,17 @@ public final class ServiceSupervisor {
     private var _handshake: ServiceHandshake?
     private var _lastError: String?
 
+    /// Optional sink for the child's raw stdout/stderr (story #137). When set, the
+    /// readers tee the child's output here so native crashes and post-handshake
+    /// logs that never reach Python's own log file are still captured.
+    private let stderrLog: FileLog?
+
     /// Invoked (off the main thread) if the child exits unexpectedly after startup.
     public var onUnexpectedTermination: ((Int32) -> Void)?
 
-    public init() {}
+    public init(stderrLog: FileLog? = nil) {
+        self.stderrLog = stderrLog
+    }
 
     public var port: Int? {
         stateLock.lock(); defer { stateLock.unlock() }
@@ -63,8 +70,34 @@ public final class ServiceSupervisor {
         process.standardError = stderr
 
         let ready = DispatchSemaphore(value: 0)
-        scanForHandshake(on: stdout.fileHandleForReading, signaling: ready)
-        scanForStartupError(on: stderr.fileHandleForReading)
+
+        // Read BOTH pipes to EOF for the full process lifetime. Stopping after the
+        // handshake/first-error line (the previous behavior) left the pipes
+        // undrained: once the ~64KB OS buffer filled with uvicorn logs or a
+        // traceback, the child blocked on write() — hanging transcription and
+        // resisting SIGTERM on quit (story #137). Parsing stops after the first
+        // match (`parse-once`) so later lines can't overwrite the handshake/error.
+        drainAndTee(
+            stdout.fileHandleForReading,
+            label: "com.nimblehq.MeetingTranscriber.service-stdout",
+            // The handshake JSON is on stdout; only tee the post-handshake noise.
+            teeBeforeMatch: false
+        ) { [weak self] line in
+            guard let self, let handshake = ServiceHandshake.parse(line: line) else { return false }
+            self.stateLock.lock(); self._handshake = handshake; self.stateLock.unlock()
+            ready.signal()
+            return true
+        }
+        drainAndTee(
+            stderr.fileHandleForReading,
+            label: "com.nimblehq.MeetingTranscriber.service-stderr",
+            // Capture stderr from the very first byte — startup failures live here.
+            teeBeforeMatch: true
+        ) { [weak self] line in
+            guard let self, let message = ServiceHandshake.parseError(line: line) else { return false }
+            self.stateLock.lock(); self._lastError = message; self.stateLock.unlock()
+            return true
+        }
 
         process.terminationHandler = { [weak self] proc in
             guard let self else { return }
@@ -115,50 +148,33 @@ public final class ServiceSupervisor {
 
     // MARK: - stdout/stderr scanning
 
-    private func scanForHandshake(on handle: FileHandle, signaling ready: DispatchSemaphore) {
-        let queue = DispatchQueue(label: "com.nimblehq.MeetingTranscriber.service-stdout")
+    /// Continuously read `handle` to EOF, teeing raw output to `stderrLog` and
+    /// parsing lines until `parse` returns true (the handshake / startup error).
+    /// After that first match, parsing stops but draining continues so the pipe
+    /// never fills and blocks the child. `teeBeforeMatch` controls whether output
+    /// received before the match is teed (stderr: yes; stdout: only post-match, to
+    /// skip the handshake JSON line).
+    private func drainAndTee(
+        _ handle: FileHandle,
+        label: String,
+        teeBeforeMatch: Bool,
+        parse: @escaping (String) -> Bool
+    ) {
+        let queue = DispatchQueue(label: label)
         queue.async { [weak self] in
             var buffer = Data()
+            var matched = false
             while true {
                 let chunk = handle.availableData
                 if chunk.isEmpty { break } // EOF
+                if matched || teeBeforeMatch { self?.stderrLog?.write(chunk) }
+                if matched { continue } // keep draining + teeing, stop parsing
                 buffer.append(chunk)
                 while let newline = buffer.firstIndex(of: 0x0A) {
                     let lineData = buffer.subdata(in: buffer.startIndex..<newline)
                     buffer.removeSubrange(buffer.startIndex...newline)
-                    guard
-                        let line = String(data: lineData, encoding: .utf8),
-                        let handshake = ServiceHandshake.parse(line: line)
-                    else { continue }
-                    self?.stateLock.lock()
-                    self?._handshake = handshake
-                    self?.stateLock.unlock()
-                    ready.signal()
-                    return
-                }
-            }
-        }
-    }
-
-    private func scanForStartupError(on handle: FileHandle) {
-        let queue = DispatchQueue(label: "com.nimblehq.MeetingTranscriber.service-stderr")
-        queue.async { [weak self] in
-            var buffer = Data()
-            while true {
-                let chunk = handle.availableData
-                if chunk.isEmpty { break }
-                buffer.append(chunk)
-                while let newline = buffer.firstIndex(of: 0x0A) {
-                    let lineData = buffer.subdata(in: buffer.startIndex..<newline)
-                    buffer.removeSubrange(buffer.startIndex...newline)
-                    guard
-                        let line = String(data: lineData, encoding: .utf8),
-                        let message = ServiceHandshake.parseError(line: line)
-                    else { continue }
-                    self?.stateLock.lock()
-                    self?._lastError = message
-                    self?.stateLock.unlock()
-                    return
+                    guard let line = String(data: lineData, encoding: .utf8) else { continue }
+                    if parse(line) { matched = true; break }
                 }
             }
         }
