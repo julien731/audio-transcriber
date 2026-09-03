@@ -53,6 +53,18 @@ func runAPIClientTests() {
         }
     }
 
+    suite("APIClient maps a timeout to .timedOut") {
+        MockURLProtocol.handler = { _, _ in .init(status: 0, body: Data(), error: URLError(.timedOut)) }
+        runBlocking {
+            do {
+                _ = try await makeClient().listMeetings()
+                expect(false, "expected a timeout error")
+            } catch let error as APIError {
+                expectEqual(error, .timedOut, "NSURLErrorTimedOut maps to .timedOut")
+            } catch { expect(false, "wrong error type: \(error)") }
+        }
+    }
+
     suite("APIClient.createMeeting multipart") {
         stub(200, #"{"meeting_id":"m9","job_id":"j9"}"#)
         let upload = MeetingUpload(
