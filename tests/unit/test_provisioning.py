@@ -25,10 +25,26 @@ class TestSetToken:
 
 
 class TestRequiredRepos:
-    def test_without_token_only_whisper(self):
+    def test_without_token_whisper_plus_default_align(self):
+        """No token → no diarization repos, but the default align set (Thai) is
+        still pre-fetched (token-independent)."""
         provisioning.set_token("")
         repos = provisioning.required_repos()
-        assert repos == ["Systran/faster-whisper-large-v3"]
+        assert repos == [
+            "Systran/faster-whisper-large-v3",
+            "airesearch/wav2vec2-large-xlsr-53-th",
+        ]
+
+    def test_empty_align_languages_only_whisper(self):
+        cfg = service_config.load()
+        cfg.hf_token = ""
+        cfg.align_languages = []
+        service_config.save(cfg)
+        assert provisioning.required_repos() == ["Systran/faster-whisper-large-v3"]
+
+    def test_default_align_languages_include_thai_repo(self):
+        provisioning.set_token("")
+        assert "airesearch/wav2vec2-large-xlsr-53-th" in provisioning.required_repos()
 
     def test_with_token_includes_diarization(self):
         provisioning.set_token("hf_secret")
@@ -45,7 +61,10 @@ class TestRequiredRepos:
 
 class TestDownload:
     def test_success_marks_provisioning_completed(self, monkeypatch):
-        provisioning.set_token("")
+        cfg = service_config.load()
+        cfg.hf_token = ""
+        cfg.align_languages = []
+        service_config.save(cfg)
         calls = []
         monkeypatch.setattr(provisioning, "_snapshot_downloader", lambda: calls.append)
 
@@ -57,6 +76,17 @@ class TestDownload:
         assert status.download_progress == 100
         assert status.provisioning_completed is True
         assert provisioning.models_ready() is True
+
+    def test_downloads_configured_align_model(self, monkeypatch):
+        """The default align set (Thai) is fetched as part of provisioning so it
+        never downloads lazily mid-transcription (#141)."""
+        provisioning.set_token("")
+        calls = []
+        monkeypatch.setattr(provisioning, "_snapshot_downloader", lambda: calls.append)
+
+        provisioning._run_download()
+
+        assert "airesearch/wav2vec2-large-xlsr-53-th" in calls
 
     def test_failure_does_not_mark_completed(self, monkeypatch):
         """Offline/partial download (EC-4) must not read as complete."""
