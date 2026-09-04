@@ -58,4 +58,4 @@ Both align paths resolve `align_model_name` from `HF_ALIGN_REPOS.get(lang)` (sin
 
 ## Deviations from Plan
 
-_Populated after implementation._
+- Added a `test_torch_native_languages_match_whisperx` drift guard (asserting `TORCH_ALIGN_LANGUAGES` equals whisperx's `DEFAULT_ALIGN_MODELS_TORCH`) in response to a code-review Nit — the constant was otherwise defined but unenforced and could silently drift. No production-code change.
