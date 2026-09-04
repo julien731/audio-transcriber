@@ -36,6 +36,12 @@ class TestRequiredRepos:
         assert "pyannote/speaker-diarization-3.1" in repos
         assert "pyannote/segmentation-3.0" in repos
 
+    def test_with_token_includes_embedding_model(self):
+        """speaker-diarization-3.1 loads this embedding model at runtime; it must
+        be pre-fetched so diarization never downloads mid-transcription."""
+        provisioning.set_token("hf_secret")
+        assert "pyannote/wespeaker-voxceleb-resnet34-LM" in provisioning.required_repos()
+
 
 class TestDownload:
     def test_success_marks_provisioning_completed(self, monkeypatch):
@@ -87,3 +93,36 @@ class TestDownload:
 class TestModelsReadyDefault:
     def test_false_before_provisioning(self):
         assert provisioning.models_ready() is False
+
+
+class TestProvisioningVersionGate:
+    def test_completed_at_old_version_reads_not_ready(self):
+        """An install provisioned before a required repo was added must re-provision."""
+        cfg = service_config.load()
+        cfg.provisioning_completed = True
+        cfg.provisioning_version = provisioning.PROVISIONING_VERSION - 1
+        service_config.save(cfg)
+
+        assert provisioning.models_ready() is False
+
+    def test_run_download_stamps_current_version(self, monkeypatch):
+        provisioning.set_token("")
+        monkeypatch.setattr(provisioning, "_snapshot_downloader", lambda: lambda repo: None)
+
+        provisioning._run_download()
+
+        cfg = service_config.load()
+        assert cfg.provisioning_version == provisioning.PROVISIONING_VERSION
+        assert provisioning.models_ready() is True
+
+    def test_status_reports_not_completed_at_old_version(self):
+        """/api/provisioning must agree with the upload gate: an install completed
+        at an older schema version reads as not completed so the client re-runs setup."""
+        cfg = service_config.load()
+        cfg.provisioning_completed = True
+        cfg.provisioning_version = provisioning.PROVISIONING_VERSION - 1
+        service_config.save(cfg)
+
+        st = provisioning.status()
+        assert st.provisioning_completed is False
+        assert st.models_present is False

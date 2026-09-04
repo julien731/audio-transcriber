@@ -50,7 +50,18 @@ class TestOfflineGateBundled:
     async def test_create_allowed_once_provisioned(self, client, sample_audio):
         cfg = service_config.load()
         cfg.provisioning_completed = True
+        cfg.provisioning_version = provisioning.PROVISIONING_VERSION
         service_config.save(cfg)
 
         res = await client.post("/api/meetings", files=_upload(sample_audio))
         assert res.status_code == 200
+
+    async def test_create_rejected_when_provisioned_at_old_version(self, client, sample_audio):
+        """An install completed before a required repo was added must re-provision."""
+        cfg = service_config.load()
+        cfg.provisioning_completed = True
+        cfg.provisioning_version = provisioning.PROVISIONING_VERSION - 1
+        service_config.save(cfg)
+
+        res = await client.post("/api/meetings", files=_upload(sample_audio))
+        assert res.status_code == 503
