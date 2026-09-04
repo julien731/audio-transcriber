@@ -61,4 +61,5 @@ Web `stageLabels` and Swift `JobStagePresentation` map the new stage to "Downloa
 
 ## Deviations from Plan
 
-_Populated after implementation._
+- `_align_multilingual_segments` gained a leading `job_id: str` parameter (not called out in the plan) so it can pass the job id into `_load_align_model_watchdogged`. Both the caller in `_run_multilingual_transcription` and the two direct test call sites were updated accordingly.
+- No other deviations. The helper takes the whisperx-closed load callable (architect Nit) and the debug-logged safe degrade + shared-cache comment (architect Minors) as approved.
