@@ -588,6 +588,7 @@ async function updateProgress(meetingId, jobId) {
             uploading: 'Uploading...',
             preprocessing: 'Preprocessing audio...',
             transcribing: 'Transcribing audio...',
+            downloading_align_model: 'Downloading alignment model...',
             aligning: 'Aligning timestamps...',
             diarizing: 'Identifying speakers...',
             saving: 'Saving results...',

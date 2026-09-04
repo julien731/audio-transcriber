@@ -7,6 +7,7 @@ public enum JobStagePresentation {
         "uploading": "Uploading",
         "preprocessing": "Preparing audio",
         "transcribing": "Transcribing",
+        "downloading_align_model": "Downloading alignment model",
         "aligning": "Aligning timestamps",
         "diarizing": "Identifying speakers",
         "emotion_analysis": "Analyzing emotion",

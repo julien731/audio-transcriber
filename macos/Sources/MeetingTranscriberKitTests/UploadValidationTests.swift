@@ -29,6 +29,9 @@ func runUploadValidationTests() {
     suite("JobStagePresentation.label") {
         expectEqual(JobStagePresentation.label(for: "transcribing"), "Transcribing", "known stage")
         expectEqual(JobStagePresentation.label(for: "diarizing"), "Identifying speakers", "friendly label")
+        expectEqual(
+            JobStagePresentation.label(for: "downloading_align_model"),
+            "Downloading alignment model", "align-model download stage (#145)")
         expectEqual(JobStagePresentation.label(for: ""), "Working", "empty → generic")
         expectEqual(JobStagePresentation.label(for: "custom_stage"), "Custom Stage", "unknown → humanized")
     }

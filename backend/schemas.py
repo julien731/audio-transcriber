@@ -30,6 +30,10 @@ class JobStage(str, Enum):
     UPLOADING = "uploading"
     PREPROCESSING = "preprocessing"
     TRANSCRIBING = "transcribing"
+    # Distinct from ALIGNING: entered only while an HF-backed alignment model is
+    # being downloaded mid-transcription (not pre-provisioned), so the frozen
+    # "Aligning… 50%" bar reads as a download instead of a hang (#145).
+    DOWNLOADING_ALIGN_MODEL = "downloading_align_model"
     ALIGNING = "aligning"
     DIARIZING = "diarizing"
     EMOTION_ANALYSIS = "emotion_analysis"

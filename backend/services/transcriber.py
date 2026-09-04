@@ -6,6 +6,7 @@ import math
 import threading
 import time
 from collections import defaultdict
+from collections.abc import Callable
 from pathlib import Path
 
 import config
@@ -18,7 +19,7 @@ from backend.schemas import (
     MeetingStatus,
     TranscriptSegment,
 )
-from backend.services.align_models import HF_ALIGN_REPOS
+from backend.services.align_models import HF_ALIGN_REPOS, align_model_cached
 from backend.services.job_queue import job_queue
 from backend.services.multilingual_transcriber import transcribe_multilingual
 from config import MEETINGS_DIR, WHISPER_BATCH_SIZE, WHISPER_DEVICE, WHISPER_MODEL
@@ -58,6 +59,33 @@ def _call_with_timeout(fn, timeout_sec, label):
     if "error" in box:
         return "error", box["error"]
     return "ok", box.get("value")
+
+
+def _load_align_model_watchdogged(
+    job_id: str,
+    load_fn: Callable[[], object],
+    *,
+    align_model_name: str | None,
+    align_progress: int,
+) -> tuple[str, object]:
+    """Run the alignment-model load under the watchdog, surfacing a download stage.
+
+    ``load_fn`` is a zero-arg callable closed over the caller's lazily-imported
+    ``whisperx`` (keeps this helper ML-import-free). When the model is HF-backed
+    (``align_model_name`` set) and not already cached, the load will download it
+    mid-transcription — reported as a distinct ``downloading_align_model`` stage so
+    the 50%/82% bar reads as a download rather than a frozen "Aligning…" (#145) —
+    then reset to ``aligning`` once loaded. Torch-native models (``align_model_name``
+    is ``None``, shared ``~/.cache/torch``) never flip the stage. Returns
+    ``_call_with_timeout``'s ``(status, loaded)``; the watchdog remains the safety net.
+    """
+    downloading = bool(align_model_name) and not align_model_cached(align_model_name)
+    if downloading:
+        job_queue.update_job(job_id, stage="downloading_align_model", progress=align_progress)
+    status, loaded = _call_with_timeout(load_fn, ALIGNMENT_TIMEOUT_SEC, "align-load")
+    if downloading:
+        job_queue.update_job(job_id, stage="aligning", progress=align_progress)
+    return status, loaded
 
 
 # Languages with a wav2vec2 alignment model available in WhisperX (single-language path).
@@ -413,13 +441,15 @@ def _run_single_language_transcription(
         align_model_name = HF_ALIGN_REPOS.get(detected_language)
         # Load (and, on first use, download) the alignment model under a watchdog
         # so a stalled fetch degrades to segment-level timestamps instead of
-        # hanging at the 50% stage (debug session macos-transcribe-stuck-70).
-        status, loaded = _call_with_timeout(
+        # hanging at the 50% stage (debug session macos-transcribe-stuck-70). A
+        # not-yet-cached fetch surfaces a distinct download stage (#145).
+        status, loaded = _load_align_model_watchdogged(
+            job_id,
             lambda: whisperx.load_align_model(
                 language_code=detected_language, device=device, model_name=align_model_name
             ),
-            ALIGNMENT_TIMEOUT_SEC,
-            "align-load",
+            align_model_name=align_model_name,
+            align_progress=50,
         )
         if status != "ok":
             logger.error(
@@ -504,7 +534,7 @@ def _finalize_aligned(segments: list[dict], group: list[dict], language: str) ->
     return finalized
 
 
-def _align_multilingual_segments(ml_segments: list[dict], audio, device: str) -> list[dict]:
+def _align_multilingual_segments(job_id: str, ml_segments: list[dict], audio, device: str) -> list[dict]:
     """Group segments by detected language and align each group with its own model.
 
     Segments are grouped by their ``language`` field and each group is aligned with
@@ -530,10 +560,14 @@ def _align_multilingual_segments(ml_segments: list[dict], audio, device: str) ->
             align_model_name = HF_ALIGN_REPOS.get(language)
             # Watchdog the load/download so a stalled fetch degrades to
             # segment-level timestamps instead of hanging (see single-language path).
-            status, loaded = _call_with_timeout(
-                lambda: whisperx.load_align_model(language_code=language, device=device, model_name=align_model_name),
-                ALIGNMENT_TIMEOUT_SEC,
-                "align-load",
+            # A not-yet-cached fetch surfaces a distinct download stage (#145).
+            status, loaded = _load_align_model_watchdogged(
+                job_id,
+                lambda language=language, align_model_name=align_model_name: whisperx.load_align_model(
+                    language_code=language, device=device, model_name=align_model_name
+                ),
+                align_model_name=align_model_name,
+                align_progress=82,
             )
             if status == "timeout":
                 raise TimeoutError(f"alignment model load exceeded {ALIGNMENT_TIMEOUT_SEC}s")
@@ -601,7 +635,7 @@ def _run_multilingual_transcription(
 
     # Per-language word alignment (BR-8, BR-9, EC-3).
     job_queue.update_job(job_id, stage="aligning", progress=82)
-    aligned = _align_multilingual_segments(ml_segments, audio, device)
+    aligned = _align_multilingual_segments(job_id, ml_segments, audio, device)
 
     # Diarize + assign speakers (shared with the single-language path).
     result, diarize_turns = _diarize_and_assign(job_id, audio, num_speakers, device, {"segments": aligned}, progress=85)

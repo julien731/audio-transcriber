@@ -13,7 +13,10 @@ asserts the copy stays in sync with the installed WhisperX where it is importabl
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Iterable
+
+logger = logging.getLogger(__name__)
 
 # Torch-native alignment languages: bundled by torchaudio into the shared
 # ``~/.cache/torch`` (not HuggingFace), so they are never part of provisioning's
@@ -79,3 +82,33 @@ def align_repos_for(languages: Iterable[str]) -> list[str]:
         if repo and repo not in repos:
             repos.append(repo)
     return repos
+
+
+def align_model_cached(repo_id: str) -> bool:
+    """Whether ``repo_id``'s alignment model is already in the local HF cache.
+
+    A ``config.json`` hit is the presence proxy — WhisperX loads the model via
+    ``Wav2Vec2ForCTC.from_pretrained``, which always needs it. Used to decide
+    whether loading the model will trigger a mid-transcription download that
+    should be surfaced as a distinct job stage rather than a frozen "Aligning…"
+    (#145).
+
+    ``huggingface_hub`` is imported lazily (kept out of this module's top-level
+    imports; mirrors ``provisioning._snapshot_downloader``) so align resolution
+    stays usable in the lightweight CI env without the ML stack. The probe uses
+    the default cache dir, which ``huggingface_hub`` derives from ``HF_HOME`` at
+    import time — the same env the bundled service sets before first import — so
+    the probe and the subsequent load share cache resolution by construction.
+
+    Degrades safe: any failure (including ``huggingface_hub`` being absent)
+    returns ``True`` ("assume present"), which merely omits the download
+    indicator and never blocks alignment — the ``ALIGNMENT_TIMEOUT_SEC`` watchdog
+    remains the safety net.
+    """
+    try:
+        from huggingface_hub import try_to_load_from_cache
+
+        return isinstance(try_to_load_from_cache(repo_id, "config.json"), str)
+    except Exception:  # noqa: BLE001 - safe degrade; keep the load path unaffected
+        logger.debug("align cache probe failed for %s; assuming present", repo_id, exc_info=True)
+        return True

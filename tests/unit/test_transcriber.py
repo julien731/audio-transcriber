@@ -1114,7 +1114,7 @@ class TestAlignMultilingualSegments:
     def _run(ml_segments, align_side_effect):
         mw = _fake_whisperx(align_side_effect)
         with patch.dict("sys.modules", {"whisperx": mw, "torch": MagicMock()}):
-            result = _align_multilingual_segments(ml_segments, MagicMock(), "cpu")
+            result = _align_multilingual_segments("job-1", ml_segments, MagicMock(), "cpu")
         return result, mw
 
     def test_each_language_aligned_with_its_own_model(self):
@@ -1233,7 +1233,7 @@ class TestAlignMultilingualSegments:
 
         ml = [{"start": 1.0, "end": 3.0, "text": "Bonjour", "language": "fr"}]
         with patch.dict("sys.modules", {"whisperx": mw, "torch": MagicMock()}):
-            result = _align_multilingual_segments(ml, MagicMock(), "cpu")
+            result = _align_multilingual_segments("job-1", ml, MagicMock(), "cpu")
         release.set()
 
         seg = result[0]
@@ -1241,6 +1241,59 @@ class TestAlignMultilingualSegments:
         assert seg["end"] == 3.0
         assert seg["text"] == "Bonjour"
         assert "words" not in seg  # never aligned; word data absent
+
+
+class TestLoadAlignModelWatchdogged:
+    """The align-model load surfaces a distinct download stage when an HF-backed
+    model is not yet cached, so a mid-transcription fetch is not mistaken for a
+    hang (#145). The queue keeps only the latest state, so stages are recorded
+    via a spy on update_job."""
+
+    @staticmethod
+    def _record_stages(queue: JobQueue, job_id: str) -> list[str]:
+        stages: list[str] = []
+        original = queue.update_job
+
+        def _spy(jid, **kwargs):
+            if kwargs.get("stage") is not None:
+                stages.append(kwargs["stage"])
+            return original(jid, **kwargs)
+
+        queue.update_job = _spy  # type: ignore[method-assign]
+        return stages
+
+    def _run(self, *, align_model_name, cached):
+        queue = JobQueue()
+        job = queue.create_job("m1")
+        stages = self._record_stages(queue, job.id)
+        with (
+            patch.object(transcriber_module, "job_queue", queue),
+            patch.object(transcriber_module, "align_model_cached", return_value=cached) as probe,
+        ):
+            status, loaded = transcriber_module._load_align_model_watchdogged(
+                job.id,
+                lambda: ("model", "metadata"),
+                align_model_name=align_model_name,
+                align_progress=50,
+            )
+        assert status == "ok"
+        assert loaded == ("model", "metadata")
+        return stages, probe
+
+    def test_hf_backed_uncached_surfaces_download_then_aligning(self):
+        stages, probe = self._run(align_model_name="jonatasgrosman/wav2vec2-x", cached=False)
+        assert stages == ["downloading_align_model", "aligning"]
+        probe.assert_called_once_with("jonatasgrosman/wav2vec2-x")
+
+    def test_hf_backed_cached_does_not_flip_stage(self):
+        stages, _probe = self._run(align_model_name="jonatasgrosman/wav2vec2-x", cached=True)
+        assert "downloading_align_model" not in stages
+
+    def test_torch_native_skips_probe_and_stage(self):
+        # model_name=None (en/fr/de/es/it): shared torch cache, never a download stage.
+        stages, probe = self._run(align_model_name=None, cached=False)
+        assert "downloading_align_model" not in stages
+        probe.assert_not_called()
 
 
 class TestDiarizationWatchdog:
