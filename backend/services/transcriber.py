@@ -24,6 +24,41 @@ from config import MEETINGS_DIR, WHISPER_BATCH_SIZE, WHISPER_DEVICE, WHISPER_MOD
 
 logger = logging.getLogger(__name__)
 
+# Wall-clock ceilings for stages that load a model (and may download it) before
+# computing. They convert a wedged or stalled stage — an interrupted model
+# download, a slow-mirror fetch, or a deadlocked pipeline — into a graceful
+# degrade instead of an indefinite hang (debug session macos-transcribe-stuck-70).
+DIARIZATION_TIMEOUT_SEC = 30 * 60
+ALIGNMENT_TIMEOUT_SEC = 30 * 60
+
+
+def _call_with_timeout(fn, timeout_sec, label):
+    """Run ``fn()`` under a wall-clock watchdog in a daemon thread.
+
+    Returns ``("ok", value)``, ``("timeout", None)``, or ``("error", exc)``. On
+    timeout the worker is abandoned rather than interrupted — a running native
+    call (torch/pyannote) cannot be cancelled cleanly — so the caller degrades
+    and moves on instead of blocking the meeting forever.
+    """
+    box: dict = {}
+
+    def _worker() -> None:
+        try:
+            box["value"] = fn()
+        except Exception as exc:  # noqa: BLE001 - surfaced via return value
+            box["error"] = exc
+
+    worker = threading.Thread(target=_worker, name=label, daemon=True)
+    worker.start()
+    worker.join(timeout=timeout_sec)
+
+    if worker.is_alive():
+        return "timeout", None
+    if "error" in box:
+        return "error", box["error"]
+    return "ok", box.get("value")
+
+
 # Languages with a wav2vec2 alignment model available in WhisperX (single-language path).
 ALIGNMENT_LANGUAGES = {
     "en",
@@ -87,7 +122,8 @@ def _diarize_and_assign(
     from whisperx.diarize import DiarizationPipeline, assign_word_speakers
 
     job_queue.update_job(job_id, stage="diarizing", progress=progress)
-    try:
+
+    def _run_diarization():
         diarize_model = DiarizationPipeline(
             model_name="pyannote/speaker-diarization-3.1",
             token=hf_token,
@@ -96,13 +132,20 @@ def _diarize_and_assign(
         diarize_kwargs = {}
         if num_speakers:
             diarize_kwargs["num_speakers"] = num_speakers
-        diarize_segments = diarize_model(audio, **diarize_kwargs)
-    except Exception:
+        return diarize_model(audio, **diarize_kwargs)
+
+    status, value = _call_with_timeout(_run_diarization, DIARIZATION_TIMEOUT_SEC, "diarization")
+    if status == "timeout":
+        logger.error("Diarization exceeded %ss; continuing without speaker labels", DIARIZATION_TIMEOUT_SEC)
+        return result, None
+    if status == "error":
         # A token accepted at provisioning time may later be revoked or be
         # unverifiable (e.g. offline). Degrade to no-diarization rather than
         # failing the whole meeting (BR-10, EC-3).
-        logger.exception("Diarization failed; continuing without speaker labels")
+        logger.error("Diarization failed; continuing without speaker labels", exc_info=value)
         return result, None
+
+    diarize_segments = value
 
     # Capture raw PyAnnote turns (with overlaps) before assign_word_speakers
     # collapses them into per-speaker non-overlapping transcript segments.
@@ -366,20 +409,36 @@ def _run_single_language_transcription(
     if detected_language in ALIGNMENT_LANGUAGES:
         job_queue.update_job(job_id, stage="aligning", progress=50)
         align_model_name = CUSTOM_ALIGN_MODELS.get(detected_language)
-        model_a, align_metadata = whisperx.load_align_model(
-            language_code=detected_language, device=device, model_name=align_model_name
+        # Load (and, on first use, download) the alignment model under a watchdog
+        # so a stalled fetch degrades to segment-level timestamps instead of
+        # hanging at the 50% stage (debug session macos-transcribe-stuck-70).
+        status, loaded = _call_with_timeout(
+            lambda: whisperx.load_align_model(
+                language_code=detected_language, device=device, model_name=align_model_name
+            ),
+            ALIGNMENT_TIMEOUT_SEC,
+            "align-load",
         )
-        result = whisperx.align(
-            result["segments"],
-            model_a,
-            align_metadata,
-            audio,
-            device,
-            return_char_alignments=False,
-        )
-        del model_a
-        if device == "cuda":
-            torch.cuda.empty_cache()
+        if status != "ok":
+            logger.error(
+                "Alignment model load %s for %s; keeping segment-level timestamps",
+                status,
+                detected_language,
+                exc_info=loaded if status == "error" else None,
+            )
+        else:
+            model_a, align_metadata = loaded
+            result = whisperx.align(
+                result["segments"],
+                model_a,
+                align_metadata,
+                audio,
+                device,
+                return_char_alignments=False,
+            )
+            del model_a
+            if device == "cuda":
+                torch.cuda.empty_cache()
 
     # Diarize + assign speakers (shared with the multilingual path)
     result, diarize_turns = _diarize_and_assign(job_id, audio, metadata.num_speakers, device, result)
@@ -467,9 +526,18 @@ def _align_multilingual_segments(ml_segments: list[dict], audio, device: str) ->
             continue
         try:
             align_model_name = CUSTOM_ALIGN_MODELS.get(language)
-            model_a, align_metadata = whisperx.load_align_model(
-                language_code=language, device=device, model_name=align_model_name
+            # Watchdog the load/download so a stalled fetch degrades to
+            # segment-level timestamps instead of hanging (see single-language path).
+            status, loaded = _call_with_timeout(
+                lambda: whisperx.load_align_model(language_code=language, device=device, model_name=align_model_name),
+                ALIGNMENT_TIMEOUT_SEC,
+                "align-load",
             )
+            if status == "timeout":
+                raise TimeoutError(f"alignment model load exceeded {ALIGNMENT_TIMEOUT_SEC}s")
+            if status == "error":
+                raise loaded
+            model_a, align_metadata = loaded
             try:
                 result = whisperx.align(
                     [{"start": s["start"], "end": s["end"], "text": s["text"]} for s in group],

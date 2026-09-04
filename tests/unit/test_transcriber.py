@@ -2,14 +2,18 @@ from __future__ import annotations
 
 import json
 import struct
+import sys
+import threading
 import wave
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
+import backend.services.transcriber as transcriber_module
 from backend.schemas import AudioAnalysis, AudioAnalysisStatus, JobStatus, MeetingStatus
 from backend.services.job_queue import JobQueue
 from backend.services.transcriber import (
     _align_multilingual_segments,
+    _diarize_and_assign,
     _get_device,
     _is_cancelled,
     _run_audio_analysis,
@@ -1212,3 +1216,78 @@ class TestAlignMultilingualSegments:
 
         starts = [s["start"] for s in result]
         assert starts == sorted(starts)
+
+    def test_align_load_timeout_keeps_segment_level(self, monkeypatch):
+        """A stalled alignment-model load degrades to segment-level timestamps
+        instead of hanging (debug session macos-transcribe-stuck-70)."""
+        monkeypatch.setattr(transcriber_module, "ALIGNMENT_TIMEOUT_SEC", 0.2)
+        release = threading.Event()
+
+        def _blocking_load(*a, **k):
+            release.wait(30)
+            return (MagicMock(), MagicMock())
+
+        mw = MagicMock()
+        mw.load_align_model.side_effect = _blocking_load
+        mw.align.side_effect = _echo_align
+
+        ml = [{"start": 1.0, "end": 3.0, "text": "Bonjour", "language": "fr"}]
+        with patch.dict("sys.modules", {"whisperx": mw, "torch": MagicMock()}):
+            result = _align_multilingual_segments(ml, MagicMock(), "cpu")
+        release.set()
+
+        seg = result[0]
+        assert seg["start"] == 1.0
+        assert seg["end"] == 3.0
+        assert seg["text"] == "Bonjour"
+        assert "words" not in seg  # never aligned; word data absent
+
+
+class TestDiarizationWatchdog:
+    """The diarization step must degrade to no-diarization instead of hanging
+    forever when the pipeline stalls (debug session macos-transcribe-stuck-70)."""
+
+    def _patch_diarize_module(self, pipeline_cls, assign=None):
+        return patch.dict(
+            sys.modules,
+            {
+                "torch": MagicMock(),
+                "whisperx.diarize": MagicMock(
+                    DiarizationPipeline=pipeline_cls,
+                    assign_word_speakers=assign or MagicMock(),
+                ),
+            },
+        )
+
+    def test_times_out_and_degrades(self, monkeypatch):
+        monkeypatch.setattr("config.current_hf_token", lambda: "hf_secret")
+        monkeypatch.setattr(transcriber_module, "DIARIZATION_TIMEOUT_SEC", 0.2)
+
+        release = threading.Event()
+
+        def _never_returns(*a, **k):
+            # Simulate a wedged pipeline construction (e.g. a stalled download).
+            release.wait(30)
+            return MagicMock()
+
+        pipeline_cls = MagicMock(side_effect=_never_returns)
+        result = {"segments": []}
+        with self._patch_diarize_module(pipeline_cls):
+            out, turns = _diarize_and_assign("job1", object(), None, "cpu", result)
+
+        release.set()
+        assert out is result  # unchanged transcript
+        assert turns is None  # diarization skipped
+
+    def test_completes_within_deadline(self, monkeypatch):
+        monkeypatch.setattr("config.current_hf_token", lambda: "hf_secret")
+        monkeypatch.setattr(transcriber_module, "DIARIZATION_TIMEOUT_SEC", 5)
+
+        seg = MagicMock()
+        seg.iterrows.return_value = [(0, {"start": 0.0, "end": 1.0, "speaker": "SPEAKER_00"})]
+        diarize_model = MagicMock(return_value=seg)
+        pipeline_cls = MagicMock(return_value=diarize_model)
+        with self._patch_diarize_module(pipeline_cls):
+            out, turns = _diarize_and_assign("job1", object(), None, "cpu", {"segments": []})
+
+        assert turns == [(0.0, 1.0, "SPEAKER_00")]
