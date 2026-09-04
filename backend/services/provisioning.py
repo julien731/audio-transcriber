@@ -14,7 +14,7 @@ from collections.abc import Callable
 
 import config
 from backend.schemas import DownloadState, ProvisioningStatus
-from backend.services import service_config
+from backend.services import align_models, service_config
 
 logger = logging.getLogger(__name__)
 
@@ -24,7 +24,11 @@ logger = logging.getLogger(__name__)
 #   v2: also pre-fetch the wespeaker embedding model that speaker-diarization-3.1
 #       loads at the diarization step — previously downloaded at runtime (70%),
 #       stalling the job (see debug session macos-transcribe-stuck-70).
-PROVISIONING_VERSION = 2
+#   v3: also pre-fetch the HuggingFace alignment models for the configured
+#       ``align_languages`` (default Thai) — previously downloaded lazily at the
+#       align step (50%), looking like a hang (#141). Torch-native align models
+#       (en/fr/de/es/it) are unaffected.
+PROVISIONING_VERSION = 3
 
 _lock = threading.Lock()
 _state: dict = {"state": DownloadState.IDLE, "progress": 0, "error": None}
@@ -51,7 +55,10 @@ def required_repos() -> list[str]:
 
     The whisper model is always required. Diarization repos are only required
     when a token is configured; without one, diarization is disabled (BR-10) and
-    provisioning completes with the transcription model alone.
+    provisioning completes with the transcription model alone. The alignment repos
+    for the configured ``align_languages`` are always required (token-independent):
+    pre-fetching them keeps the align step from downloading lazily mid-transcription
+    (#141).
     """
     cfg = service_config.load()
     repos = [_whisper_repo(cfg.whisper_model)]
@@ -66,6 +73,12 @@ def required_repos() -> list[str]:
             # hanging the job. Pre-fetch it so diarization runs entirely offline.
             "pyannote/wespeaker-voxceleb-resnet34-LM",
         ]
+    # HF alignment models for the configured languages (torch-native and unknown
+    # codes contribute nothing). Deduped against the list already assembled so a
+    # repo is never counted twice in the download progress.
+    for repo in align_models.align_repos_for(cfg.align_languages):
+        if repo not in repos:
+            repos.append(repo)
     return repos
 
 

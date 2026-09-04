@@ -225,6 +225,14 @@ class ServiceConfig(BaseModel):
     # re-provision to fetch the additions instead of downloading them lazily
     # mid-transcription (BR-24, EC-4).
     provisioning_version: int = 0
+    # Languages whose HuggingFace alignment models are pre-fetched during
+    # provisioning so they never download lazily mid-transcription (#141). Only
+    # HF-backed languages need listing — torch-native ones (en/fr/de/es/it) are
+    # bundled by torchaudio. Defaults to Thai, the one HF-backed language this
+    # deployment commonly uses; edit the persisted config to prefetch others. A
+    # language left off still works, downloading at the align stage under the
+    # watchdog (see #145).
+    align_languages: list[str] = Field(default_factory=lambda: ["th"])
     imported_from: str | None = None
 
 
