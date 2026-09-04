@@ -18,6 +18,14 @@ from backend.services import service_config
 
 logger = logging.getLogger(__name__)
 
+# Bump when ``required_repos()`` gains (or drops) a model so already-provisioned
+# installs re-provision instead of lazily downloading the addition mid-run.
+#   v1: whisper (+ segmentation-3.0, speaker-diarization-3.1 when a token is set)
+#   v2: also pre-fetch the wespeaker embedding model that speaker-diarization-3.1
+#       loads at the diarization step — previously downloaded at runtime (70%),
+#       stalling the job (see debug session macos-transcribe-stuck-70).
+PROVISIONING_VERSION = 2
+
 _lock = threading.Lock()
 _state: dict = {"state": DownloadState.IDLE, "progress": 0, "error": None}
 _thread: threading.Thread | None = None
@@ -48,7 +56,16 @@ def required_repos() -> list[str]:
     cfg = service_config.load()
     repos = [_whisper_repo(cfg.whisper_model)]
     if cfg.hf_token:
-        repos += ["pyannote/segmentation-3.0", "pyannote/speaker-diarization-3.1"]
+        repos += [
+            "pyannote/segmentation-3.0",
+            "pyannote/speaker-diarization-3.1",
+            # Embedding model referenced by speaker-diarization-3.1's config and
+            # loaded when the pipeline is instantiated. Not fetching it here made
+            # the bundled service download it lazily at the diarization step (70%),
+            # over plain HTTP into the isolated bundle cache, with no timeout —
+            # hanging the job. Pre-fetch it so diarization runs entirely offline.
+            "pyannote/wespeaker-voxceleb-resnet34-LM",
+        ]
     return repos
 
 
@@ -77,6 +94,7 @@ def _run_download() -> None:
 
         cfg = service_config.load()
         cfg.provisioning_completed = True
+        cfg.provisioning_version = PROVISIONING_VERSION
         service_config.save(cfg)
         _set_state(state=DownloadState.COMPLETED, progress=100)
         logger.info("Provisioning complete")
@@ -99,8 +117,14 @@ def start_download() -> ProvisioningStatus:
 
 
 def models_ready() -> bool:
-    """Whether required models are present (source of truth: persisted flag)."""
-    return service_config.load().provisioning_completed
+    """Whether required models are present.
+
+    A completed provisioning at an older schema version (before a required repo
+    was added) reads as NOT ready, so already-provisioned installs re-provision
+    to fetch the additions rather than downloading them lazily mid-transcription.
+    """
+    cfg = service_config.load()
+    return cfg.provisioning_completed and cfg.provisioning_version >= PROVISIONING_VERSION
 
 
 def set_token(token: str) -> ProvisioningStatus:
@@ -114,9 +138,14 @@ def set_token(token: str) -> ProvisioningStatus:
 def status() -> ProvisioningStatus:
     cfg = service_config.load()
     st = _get_state()
+    # Report readiness via models_ready() (version-gated), not the raw flag, so
+    # /api/provisioning agrees with /api/health and the upload gate. Otherwise an
+    # install completed at an older schema version would read as completed here —
+    # routing the client past the setup wizard — while every upload 503s.
+    ready = models_ready()
     return ProvisioningStatus(
-        provisioning_completed=cfg.provisioning_completed,
-        models_present=cfg.provisioning_completed,
+        provisioning_completed=ready,
+        models_present=ready,
         whisper_model=cfg.whisper_model,
         diarization_available=bool(cfg.hf_token),
         download_state=st["state"],

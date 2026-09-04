@@ -34,6 +34,9 @@ for pkg in (
     "speechbrain",
     "asteroid_filterbanks",
     "torchcodec",
+    # huggingface_hub imports hf_xet lazily to accelerate model downloads; without
+    # collecting it the frozen app falls back to slow plain-HTTP transfers.
+    "hf_xet",
 ):
     try:
         d, b, h = collect_all(pkg)
@@ -64,6 +67,7 @@ for _meta_pkg in (
     "filelock",
     "pyyaml",
     "huggingface-hub",
+    "hf-xet",
     "safetensors",
 ):
     try:

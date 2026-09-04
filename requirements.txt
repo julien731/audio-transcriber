@@ -6,6 +6,10 @@ whisperx @ git+https://github.com/m-bain/whisperX.git
 # Explicit (also a whisperx transitive dep): first-run provisioning downloads
 # the transcription/diarization models via huggingface_hub.snapshot_download.
 huggingface_hub>=0.24.0
+# Accelerated Xet transfers for the HuggingFace repos above. Without it,
+# huggingface_hub logs "Xet Storage is enabled ... falling back to regular HTTP"
+# and downloads are markedly slower — the slow path behind first-run stalls.
+hf_xet>=1.0.0
 torch
 torchaudio
 # Pinned to match torch 2.8 ABI. Newer torchcodec releases (0.10+) target

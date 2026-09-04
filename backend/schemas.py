@@ -219,6 +219,12 @@ class ServiceConfig(BaseModel):
     data_dir: str = ""
     models_dir: str = ""
     provisioning_completed: bool = False
+    # Schema version of the model set last provisioned. When the required-repo
+    # set changes (e.g. a new dependency model is added), bumping
+    # ``provisioning.PROVISIONING_VERSION`` makes already-provisioned installs
+    # re-provision to fetch the additions instead of downloading them lazily
+    # mid-transcription (BR-24, EC-4).
+    provisioning_version: int = 0
     imported_from: str | None = None
 
 
