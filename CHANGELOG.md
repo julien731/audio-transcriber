@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Fixed
+
+- Pre-download the HuggingFace alignment models for the configured languages (Thai by default) during first-run provisioning, so they no longer download lazily at the align step (50%) mid-transcription — which was indistinguishable from a hang. Torch-native languages (English, French, German, Spanish, Italian) were already unaffected. The alignment-stage watchdog remains the safety net for any language left unprovisioned.
+
 ### Security
 
 - Redact secret-shaped tokens (at minimum HuggingFace `hf_...` tokens) from `service.log`, the raw child `service-stderr.log` tee, and `app.log` before they are written, so the shareable **Export Diagnostics…** bundle cannot leak a credential embedded in third-party output (e.g. a token surfaced in a dependency's traceback).
