@@ -14,6 +14,7 @@ final class MeetingDetailStore: ObservableObject {
     let client: APIClient
     let meetingId: String
     private var pollTask: Task<Void, Never>?
+    private let notifier = UserNotificationNotifier()
     /// Fired when the meeting reaches a terminal state, so the list can refresh.
     var onStatusSettled: (() -> Void)?
 
@@ -46,6 +47,14 @@ final class MeetingDetailStore: ObservableObject {
                     let job = try await self.client.job(id: jobId)
                     self.job = job
                     if job.status.isTerminal {
+                        // Notify (unless frontmost) on the same terminal edge the
+                        // web app uses; parity with sendNotification (chore #144).
+                        if let content = job.status.settledNotification(
+                            meetingTitle: self.detail?.metadata.title ?? "Your meeting",
+                            error: job.error
+                        ) {
+                            self.notifier.post(content)
+                        }
                         await self.reloadAfterSettle()
                         return
                     }

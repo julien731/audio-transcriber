@@ -10,9 +10,12 @@ import UniformTypeIdentifiers
 final class AppDelegate: NSObject, NSApplicationDelegate {
     let appState = AppState()
     let updater = UpdaterController()
+    private let notifier = UserNotificationNotifier()
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         AppLog.info("Application launched")
+        // Prompt once so completion notifications (chore #144) can be delivered.
+        notifier.requestAuthorization()
         appState.start()
     }
 
