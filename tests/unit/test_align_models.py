@@ -51,3 +51,10 @@ class TestHfAlignReposDriftGuard:
         whisperx_alignment = pytest.importorskip("whisperx.alignment")
         assert "th" not in whisperx_alignment.DEFAULT_ALIGN_MODELS_HF
         assert align_models.HF_ALIGN_REPOS["th"] == "airesearch/wav2vec2-large-xlsr-53-th"
+
+    def test_torch_native_languages_match_whisperx(self):
+        """Torch-native languages must equal WhisperX's torchaudio set, so a
+        language is never classified torch-native here while WhisperX resolves it
+        to an (un-provisioned) HF repo."""
+        whisperx_alignment = pytest.importorskip("whisperx.alignment")
+        assert align_models.TORCH_ALIGN_LANGUAGES == set(whisperx_alignment.DEFAULT_ALIGN_MODELS_TORCH)
