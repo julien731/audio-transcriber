@@ -6,6 +6,7 @@ import math
 import threading
 import time
 from collections import defaultdict
+from collections.abc import Callable
 from pathlib import Path
 
 import config
@@ -60,7 +61,13 @@ def _call_with_timeout(fn, timeout_sec, label):
     return "ok", box.get("value")
 
 
-def _load_align_model_watchdogged(job_id, load_fn, *, align_model_name, align_progress):
+def _load_align_model_watchdogged(
+    job_id: str,
+    load_fn: Callable[[], object],
+    *,
+    align_model_name: str | None,
+    align_progress: int,
+) -> tuple[str, object]:
     """Run the alignment-model load under the watchdog, surfacing a download stage.
 
     ``load_fn`` is a zero-arg callable closed over the caller's lazily-imported
