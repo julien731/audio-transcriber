@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import sys
+import types
+
 import pytest
 
 from backend.services import align_models
@@ -30,6 +33,51 @@ class TestAlignReposFor:
 
     def test_empty_input(self):
         assert align_models.align_repos_for([]) == []
+
+
+class TestAlignModelCached:
+    """align_model_cached probes the HF cache to decide if a load will download."""
+
+    def _install_fake_hub(self, monkeypatch, return_value):
+        """Inject a fake huggingface_hub whose try_to_load_from_cache is stubbed."""
+        fake = types.ModuleType("huggingface_hub")
+        calls: list[tuple] = []
+
+        def _probe(repo_id, filename):
+            calls.append((repo_id, filename))
+            if isinstance(return_value, Exception):
+                raise return_value
+            return return_value
+
+        fake.try_to_load_from_cache = _probe
+        monkeypatch.setitem(sys.modules, "huggingface_hub", fake)
+        return calls
+
+    def test_cached_path_string_is_present(self, monkeypatch):
+        calls = self._install_fake_hub(monkeypatch, "/cache/models--foo/config.json")
+        assert align_models.align_model_cached("foo/bar") is True
+        assert calls == [("foo/bar", "config.json")]
+
+    def test_not_cached_none_is_absent(self, monkeypatch):
+        self._install_fake_hub(monkeypatch, None)
+        assert align_models.align_model_cached("foo/bar") is False
+
+    def test_known_missing_sentinel_is_absent(self, monkeypatch):
+        # huggingface_hub returns a _CACHED_NO_EXIST sentinel (not a str) for a
+        # file known to be absent from the repo.
+        sentinel = object()
+        self._install_fake_hub(monkeypatch, sentinel)
+        assert align_models.align_model_cached("foo/bar") is False
+
+    def test_probe_error_degrades_to_present(self, monkeypatch):
+        self._install_fake_hub(monkeypatch, RuntimeError("cache scan failed"))
+        assert align_models.align_model_cached("foo/bar") is True
+
+    def test_missing_huggingface_hub_degrades_to_present(self, monkeypatch):
+        # Absent in the lightweight CI env: the lazy import raises, and the probe
+        # must degrade to "assume present" rather than blow up.
+        monkeypatch.setitem(sys.modules, "huggingface_hub", None)
+        assert align_models.align_model_cached("foo/bar") is True
 
 
 class TestHfAlignReposDriftGuard:
