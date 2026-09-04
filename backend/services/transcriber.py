@@ -18,6 +18,7 @@ from backend.schemas import (
     MeetingStatus,
     TranscriptSegment,
 )
+from backend.services.align_models import HF_ALIGN_REPOS
 from backend.services.job_queue import job_queue
 from backend.services.multilingual_transcriber import transcribe_multilingual
 from config import MEETINGS_DIR, WHISPER_BATCH_SIZE, WHISPER_DEVICE, WHISPER_MODEL
@@ -93,9 +94,10 @@ ALIGNMENT_LANGUAGES = {
     "th",
 }
 
-CUSTOM_ALIGN_MODELS = {
-    "th": "airesearch/wav2vec2-large-xlsr-53-th",
-}
+# Alignment repos are resolved from the shared align_models.HF_ALIGN_REPOS mapping
+# (imported above) so the repo provisioning pre-fetches is exactly the one loaded
+# here. Torch-native and unlisted languages resolve to None via ``.get()``, letting
+# WhisperX pick its own default (still watchdogged at the align stage).
 
 
 def _diarize_and_assign(
@@ -408,7 +410,7 @@ def _run_single_language_transcription(
     # Align
     if detected_language in ALIGNMENT_LANGUAGES:
         job_queue.update_job(job_id, stage="aligning", progress=50)
-        align_model_name = CUSTOM_ALIGN_MODELS.get(detected_language)
+        align_model_name = HF_ALIGN_REPOS.get(detected_language)
         # Load (and, on first use, download) the alignment model under a watchdog
         # so a stalled fetch degrades to segment-level timestamps instead of
         # hanging at the 50% stage (debug session macos-transcribe-stuck-70).
@@ -506,8 +508,8 @@ def _align_multilingual_segments(ml_segments: list[dict], audio, device: str) ->
     """Group segments by detected language and align each group with its own model.
 
     Segments are grouped by their ``language`` field and each group is aligned with
-    that language's alignment model (BR-8), using the custom model from
-    ``CUSTOM_ALIGN_MODELS`` where one is configured. Languages without an alignment
+    that language's alignment model (BR-8), using the repo resolved from
+    ``align_models.HF_ALIGN_REPOS`` where one is listed. Languages without an alignment
     model, or whose alignment raises, retain segment-level timestamps with text
     unchanged (BR-9, EC-3, Truth-2). Returns a flat list sorted by start time.
     """
@@ -525,7 +527,7 @@ def _align_multilingual_segments(ml_segments: list[dict], audio, device: str) ->
             aligned.extend(_segment_level(group, language))
             continue
         try:
-            align_model_name = CUSTOM_ALIGN_MODELS.get(language)
+            align_model_name = HF_ALIGN_REPOS.get(language)
             # Watchdog the load/download so a stalled fetch degrades to
             # segment-level timestamps instead of hanging (see single-language path).
             status, loaded = _call_with_timeout(
